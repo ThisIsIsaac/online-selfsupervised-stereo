@@ -80,12 +80,7 @@ bad5s[-1] =    bad5s[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18, 
 bad10s[-1] =   bad10s[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]].mean()
 bad20s[-1] =   bad20s[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]].mean()
 times[-1] =    times[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]].mean()
-#avgerrs[-1]= avgerrs.mean()
-#rmss[-1] =    rmss.mean()
-#bad5s[-1] =    bad5s.mean()
-#bad10s[-1] =    bad10s.mean()
-#bad20s[-1] =    bad20s.mean()
-#times[-1] =    times.mean()
+
 t.add_rows(zip([i.split('/')[-1] for i in imgnames]+['ALL'],avgerrs,rmss,bad5s,bad10s,bad20s,times),header=False)
 
 

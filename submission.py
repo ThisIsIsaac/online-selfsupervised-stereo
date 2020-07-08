@@ -15,6 +15,7 @@ from utils.eval import mkdir_p, save_pfm
 from utils.preprocess import get_transform
 #cudnn.benchmark = True
 cudnn.benchmark = False
+import wandb
 
 parser = argparse.ArgumentParser(description='HSM')
 parser.add_argument('--datapath', default='./data-mbtest/',
@@ -25,7 +26,11 @@ parser.add_argument('--outdir', default='output',
                     help='output dir')
 parser.add_argument('--clean', type=float, default=-1,
                     help='clean up output using entropy estimation')
-parser.add_argument('--testres', type=float, default=0.5,
+parser.add_argument('--testres', type=float, default=0.5, # Too low for images. Sometimes turn it to 2 ~ 3
+                                                          # for ETH3D we need to use different resolution
+                    # 1 - nothibg, 0,5 halves the image, 2 doubles the size of the iamge. We need to
+                    # middleburry 1 (3000, 3000)
+                    # ETH (3~4) since (1000, 1000)
                     help='test time resolution ratio 0-x')
 parser.add_argument('--max_disp', type=float, default=-1,
                     help='maximum disparity to search for')
@@ -34,11 +39,13 @@ parser.add_argument('--level', type=int, default=1,
                           can also use level 2 (stage 2) or level 3 (stage 1)')
 args = parser.parse_args()
 
-
+wandb_logger = wandb.init(name="submission.py", project="rvc_stereo", save_code=True, magic=True, config=args )
 
 # dataloader
 from dataloader import listfiles as DA
 test_left_img, test_right_img, _, _ = DA.dataloader(args.datapath)
+print("total test images: " + str(len(test_left_img)))
+print("output path: " + args.outdir)
 
 # construct model
 model = hsm(128,args.clean,level=args.level)
@@ -112,9 +119,15 @@ def main():
         imgL = np.lib.pad(imgL,((0,0),(0,0),(top_pad,0),(0,left_pad)),mode='constant',constant_values=0)
         imgR = np.lib.pad(imgR,((0,0),(0,0),(top_pad,0),(0,left_pad)),mode='constant',constant_values=0)
 
+
+
         # test
-        imgL = Variable(torch.FloatTensor(imgL).cuda())
-        imgR = Variable(torch.FloatTensor(imgR).cuda())
+        imgL = torch.FloatTensor(imgL)
+        imgR = torch.FloatTensor(imgR).cuda()
+        wandb.log(
+            {"imgL": wandb.Image(imgL, caption=str(imgL.shape)), "imgR": wandb.Image(imgR, caption=str(imgR.shape))})
+        imgL = imgL.cuda()
+        imgR = imgR.cuda()
         with torch.no_grad():
             torch.cuda.synchronize()
             start_time = time.time()
@@ -143,8 +156,12 @@ def main():
 
         np.save('%s/%s-disp.npy'% (args.outdir, idxname.split('/')[0]),(pred_disp))
         np.save('%s/%s-ent.npy'% (args.outdir, idxname.split('/')[0]),(entropy))
-        cv2.imwrite('%s/%s-disp.png'% (args.outdir, idxname.split('/')[0]),pred_disp/pred_disp[~invalid].max()*255)
-        cv2.imwrite('%s/%s-ent.png'% (args.outdir, idxname.split('/')[0]),entropy/entropy.max()*255)
+        pred_disp_png = pred_disp/pred_disp[~invalid].max()*255
+        cv2.imwrite('%s/%s-disp.png'% (args.outdir, idxname.split('/')[0]),pred_disp_png)
+        entropy_png = entropy/entropy.max()*255
+        cv2.imwrite('%s/%s-ent.png'% (args.outdir, idxname.split('/')[0]),entropy_png)
+
+        wandb.log({"disp":wandb.Image(pred_disp_png,caption=str(pred_disp_png.shape)), "entropy":wandb.Image(entropy_png,caption=str(entropy_png.shape))})
 
         with open('%s/%s.pfm'% (args.outdir, idxname),'w') as f:
             save_pfm(f,pred_disp[::-1,:])
