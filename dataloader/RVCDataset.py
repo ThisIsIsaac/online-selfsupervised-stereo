@@ -5,7 +5,6 @@ from utils.preprocess import get_transform
 import cv2
 import torch
 import numpy as np
-import wandb
 
 class RVCDataset(Dataset):
     def __init__(self, data_path, eth_testres=3.5, wandb_logger=None, include_training=True, include_test=True, testres=None):
@@ -72,10 +71,11 @@ class RVCDataset(Dataset):
         im1_path = os.path.join(folder, img_name, 'im1.png')
         imgL_o = (skimage.io.imread(im0_path).astype('float32'))[:, :, :3]
         imgR_o = (skimage.io.imread(im1_path).astype('float32'))[:, :, :3]
+        # torch.save(imgL_o, "/home/isaac/high-res-stereo/debug/rvc/img0.pt")
 
         # wandb.log({"raw_imgL": wandb.Image(imgL_o, caption=str(imgL_o.shape)),"raw_imgR":wandb.Image(imgR_o, caption=str(imgR_o.shape))}, step=item)
 
-        original_image_size = imgL_o.shape[:2]
+
 
         path_to_replace = os.path.basename(os.path.normpath(im0_path))
         with open(im0_path.replace(path_to_replace, 'calib.txt')) as f:
@@ -84,13 +84,17 @@ class RVCDataset(Dataset):
 
         imgL_o = cv2.resize(imgL_o, None, fx=testres, fy=testres, interpolation=cv2.INTER_CUBIC)
         imgR_o = cv2.resize(imgR_o, None, fx=testres, fy=testres, interpolation=cv2.INTER_CUBIC)
-        # imgL = self.transform(imgL_o).numpy()
-        # imgR = self.transform(imgR_o).numpy()
-        imgL = imgL_o
-        imgR = imgR_o
+        # torch.save(imgL_o, "/home/isaac/high-res-stereo/debug/rvc/img1.pt")
+        original_image_size = imgL_o.shape[:2]
+
+        imgL = self.transform(imgL_o).numpy()
+        imgR = self.transform(imgR_o).numpy()
+        # torch.save(imgL, "/home/isaac/high-res-stereo/debug/rvc/img2.pt")
 
         imgL = np.reshape(imgL, [3, imgL.shape[1], imgL.shape[2]])
         imgR = np.reshape(imgR, [3, imgR.shape[1], imgR.shape[2]])
+        # torch.save(imgL, "/home/isaac/high-res-stereo/debug/rvc/img3.pt")
+
 
         ##fast pad
         max_h = int(imgL.shape[1] // 64 * 64)
@@ -102,6 +106,7 @@ class RVCDataset(Dataset):
         left_pad = max_w - imgL.shape[2]
         imgL = np.lib.pad(imgL, ( (0, 0), (top_pad, 0), (0, left_pad)), mode='constant', constant_values=0)
         imgR = np.lib.pad(imgR, ( (0, 0), (top_pad, 0), (0, left_pad)), mode='constant', constant_values=0)
+        # torch.save(imgL, "/home/isaac/high-res-stereo/debug/rvc/img4.pt")
 
         # test
         imgL = torch.FloatTensor(imgL)

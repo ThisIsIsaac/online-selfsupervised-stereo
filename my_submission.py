@@ -81,11 +81,12 @@ def main():
         imgL_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/ETH3D2017_playground_2s/im0.png').astype('float32'))[:, :, :3]
         imgR_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/ETH3D2017_playground_2s/im1.png').astype('float32'))[:, :, :3]
         imgsize = imgL_o.shape[:2]
+        # torch.save(imgL_o, "/home/isaac/high-res-stereo/debug/my_submission/img0.pt")
 
         if args.max_disp > 0:
             max_disp = int(args.max_disp)
         else:
-            with open(test_left_img[inx].replace('im0.png', 'calib.txt')) as f:
+            with open('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/ETH3D2017_playground_2s/calib.txt') as f:
                 lines = f.readlines()
                 max_disp = int(int(lines[6].split('=')[-1]))
 
@@ -105,13 +106,15 @@ def main():
         # resize
         imgL_o = cv2.resize(imgL_o, None, fx=args.testres, fy=args.testres, interpolation=cv2.INTER_CUBIC)
         imgR_o = cv2.resize(imgR_o, None, fx=args.testres, fy=args.testres, interpolation=cv2.INTER_CUBIC)
-        # imgL = processed(imgL_o).numpy()
-        # imgR = processed(imgR_o).numpy()
-        imgL = imgL_o
-        imgR = imgR_o
+        # torch.save(imgL_o, "/home/isaac/high-res-stereo/debug/my_submission/img1.pt")
+
+        imgL = processed(imgL_o).numpy()
+        imgR = processed(imgR_o).numpy()
+        # torch.save(imgL, "/home/isaac/high-res-stereo/debug/my_submission/img2.pt")
 
         imgL = np.reshape(imgL, [1, 3, imgL.shape[1], imgL.shape[2]])
         imgR = np.reshape(imgR, [1, 3, imgR.shape[1], imgR.shape[2]])
+        # torch.save(imgL, "/home/isaac/high-res-stereo/debug/my_submission/img3.pt")
 
         ##fast pad
         max_h = int(imgL.shape[2] // 64 * 64)
@@ -123,6 +126,7 @@ def main():
         left_pad = max_w - imgL.shape[3]
         imgL = np.lib.pad(imgL, ((0, 0), (0, 0), (top_pad, 0), (0, left_pad)), mode='constant', constant_values=0)
         imgR = np.lib.pad(imgR, ((0, 0), (0, 0), (top_pad, 0), (0, left_pad)), mode='constant', constant_values=0)
+        # torch.save(imgL, "/home/isaac/high-res-stereo/debug/my_submission/img4.pt")
 
         # test
         imgL = torch.FloatTensor(imgL)
@@ -135,11 +139,12 @@ def main():
             torch.cuda.synchronize()
             start_time = time.time()
 
-            torch.save(imgL, "/home/isaac/high-res-stereo/my_submission_imgL.pt")
+            # torch.save(imgL, "/home/isaac/high-res-stereo/debug/my_submission/img_final.pt")
 
             pred_disp, entropy = model(imgL, imgR)
             torch.cuda.synchronize()
-            ttime = (time.time() - start_time);
+            ttime = (time.time() - start_time)
+            torch.save(pred_disp, "/home/isaac/high-res-stereo/debug/my_submission/out.pt")
             print('time = %.2f' % (ttime * 1000))
         pred_disp = torch.squeeze(pred_disp).data.cpu().numpy()
 

@@ -52,7 +52,7 @@ def main():
 
     args = parser.parse_args()
 
-    wandb.init(name=args.outdir, project="rvc_stereo", save_code=True, magic=True, config=args )
+    wandb.init(name=args.outdir, project="rvc_stereo", save_code=True, magic=True, config=args)
 
     use_adaptive_testres = False
     if args.testres == -1:
@@ -78,7 +78,7 @@ def main():
         dataset = RVCDataset(args.datapath, testres=args.testres)
     else:
         dataset = RVCDataset(args.datapath)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=1)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     steps = 0
     for (imgL, imgR, max_disp, origianl_image_size, dataset_type , img_name) in dataloader:
         # Todo: this is a hot fix. Must be fixed to handle batchsize greater than 1
@@ -117,23 +117,25 @@ def main():
         if max_h < imgL.shape[2]: max_h += 64
         if max_w < imgL.shape[3]: max_w += 64
 
-        wandb.log({"imgL": wandb.Image(imgL, caption=str(imgL.shape)),
-                   "imgR": wandb.Image(imgR, caption=str(imgR.shape))}, step=steps)
+        wandb.log({"imgL": wandb.Image(imgL, caption=img_name + ", " + str(imgL.shape)),
+                   "imgR": wandb.Image(imgR, caption=img_name + ", " + str(imgR.shape))}, step=steps)
 
         with torch.no_grad():
             torch.cuda.synchronize()
             start_time = time.time()
-
-            torch.save(imgL, "/home/isaac/high-res-stereo/rvc_imgL.pt")
+            # torch.save(imgL, "/home/isaac/high-res-stereo/debug/rvc/img_final.pt")
 
             pred_disp, entropy = model(imgL, imgR)
+
             torch.cuda.synchronize()
-            ttime = (time.time() - start_time);
+            ttime = (time.time() - start_time)
+            torch.save(pred_disp, "/home/isaac/high-res-stereo/debug/rvc/out.pt")
+
             print('    time = %.2f' % (ttime * 1000))
         pred_disp = torch.squeeze(pred_disp).data.cpu().numpy()
 
-        top_pad = max_h - imgL.shape[0]
-        left_pad = max_w - imgL.shape[1]
+        top_pad = max_h - origianl_image_size[0][0]
+        left_pad = max_w - origianl_image_size[1][0]
         entropy = entropy[top_pad:, :pred_disp.shape[1] - left_pad].cpu().numpy()
         pred_disp = pred_disp[top_pad:, :pred_disp.shape[1] - left_pad]
 
@@ -167,7 +169,7 @@ def main():
         print("    output = " + out_pfm_path)
 
         wandb.log({"hello":1},step=steps)
-        wandb.log({"disparity": wandb.Image(pred_disp_png, caption=str(pred_disp_png.shape)), "entropy": wandb.Image(entorpy_png, caption=str(entorpy_png.shape)), "time": ttime}, step=steps)
+        wandb.log({"disparity": wandb.Image(pred_disp_png, caption=img_name + ", " + str(pred_disp_png.shape + "time: " + str(ttime))), "entropy": wandb.Image(entorpy_png, caption=img_name + ", " + str(entorpy_png.shape)), "time": ttime}, step=steps)
         torch.cuda.empty_cache()
     wandb.save()
 
