@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-import skimage
+import skimage.io
 import os
 from utils.preprocess import get_transform
 import cv2
@@ -35,6 +35,7 @@ class RVCDataset(Dataset):
                 self.stereo_pair_subfolders[folder].append(dataset_name)
             self.total_len += len(self.stereo_pair_subfolders[folder])
 
+
     def __len__(self):
         return self.total_len
 
@@ -57,10 +58,10 @@ class RVCDataset(Dataset):
                 dataset_type = 0
                 testres = self.middlebury_testres
             elif "kitti" in img_name.lower():  # ETH
-                dataset_type = 1
+                dataset_type = 2
                 testres = self.kitti_testres
             elif "eth3d" in img_name.lower():  # Gengsahn said it's between 3~4. Find with linear grid search
-                dataset_type = 2
+                dataset_type = 1
                 testres = self.eth_testres
             else:
                 raise ValueError("name of the folder does not contain any of: kitti, middlebury, eth3d")
@@ -114,4 +115,4 @@ class RVCDataset(Dataset):
 
         # wandb.log({"imgL": wandb.Image(imgL, caption=str(imgL.shape)), "imgR": wandb.Image(imgR, caption=str(imgR.shape))}, step=item)
 
-        return (imgL, imgR, max_disp, original_image_size, dataset_type , img_name)
+        return (imgL, imgR, max_disp, original_image_size, dataset_type , os.path.join(folder, img_name))

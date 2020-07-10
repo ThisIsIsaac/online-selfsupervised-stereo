@@ -2,19 +2,16 @@ import argparse
 import cv2
 from models import hsm
 import os
-import skimage.io
 import torch.backends.cudnn as cudnn
 import time
 from models.submodule import *
 from utils.eval import save_pfm
-from utils.preprocess import get_transform
-import sys
-from dataset_format import *
 from dataloader.RVCDataset import RVCDataset
-from torch.utils.data import Dataset, DataLoader
-# cudnn.benchmark = True
+from torch.utils.data import DataLoader
 cudnn.benchmark = False
 import wandb
+import score_rvc
+from utils.readpfm import readPFM
 
 # source: `rvc_devkit/stereo/util_stereo.py`
 # Returns a dict which maps the parameters to their values. The values (right
@@ -38,7 +35,7 @@ def main():
                         help='test data path')
     parser.add_argument('--loadmodel', default=None,
                         help='model path')
-    parser.add_argument('--outdir', default='rvc_highres_output',
+    parser.add_argument('--name', default='rvc_highres_output',
                         help='output dir')
     parser.add_argument('--clean', type=float, default=-1,
                         help='clean up output using entropy estimation')
@@ -49,10 +46,13 @@ def main():
     parser.add_argument('--level', type=int, default=1,
                         help='output level of output, default is level 1 (stage 3),\
                               can also use level 2 (stage 2) or level 3 (stage 1)')
-
+    parser.add_argument('--debug_image', type=str, default=None)
+    parser.add_argument("--eth_testres" , type=int, default=3.5)
+    parser.add_argument("--score_results", action="store_true")
+    parser.add_argument("--score_weights", action="store_true")
     args = parser.parse_args()
 
-    wandb.init(name=args.outdir, project="rvc_stereo", save_code=True, magic=True, config=args)
+    wandb.init(name=args.name, project="rvc_stereo", save_code=True, magic=True, config=args)
 
     use_adaptive_testres = False
     if args.testres == -1:
@@ -77,13 +77,20 @@ def main():
     if args.testres > 0:
         dataset = RVCDataset(args.datapath, testres=args.testres)
     else:
-        dataset = RVCDataset(args.datapath)
+        dataset = RVCDataset(args.datapath, eth_testres=args.eth_testres)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     steps = 0
-    for (imgL, imgR, max_disp, origianl_image_size, dataset_type , img_name) in dataloader:
+    for (imgL, imgR, max_disp, origianl_image_size, dataset_type , data_path) in dataloader:
         # Todo: this is a hot fix. Must be fixed to handle batchsize greater than 1
-        img_name = img_name[0]
+        data_path = data_path[0]
+        img_name = os.path.basename(os.path.normpath(data_path))
+
+
+        if args.debug_image != None and not args.debug_image in img_name:
+            continue
+
         print(img_name)
+
         if use_adaptive_testres:
             if dataset_type == 0: # Middlebury
                 args.testres = 1
@@ -117,13 +124,12 @@ def main():
         if max_h < imgL.shape[2]: max_h += 64
         if max_w < imgL.shape[3]: max_w += 64
 
-        wandb.log({"imgL": wandb.Image(imgL, caption=img_name + ", " + str(imgL.shape)),
-                   "imgR": wandb.Image(imgR, caption=img_name + ", " + str(imgR.shape))}, step=steps)
+        wandb.log({"imgL": wandb.Image(imgL, caption=img_name + ", " + str(tuple(imgL.shape))),
+                   "imgR": wandb.Image(imgR, caption=img_name + ", " + str(tuple(imgR.shape)))}, step=steps)
 
         with torch.no_grad():
             torch.cuda.synchronize()
             start_time = time.time()
-            # torch.save(imgL, "/home/isaac/high-res-stereo/debug/rvc/img_final.pt")
 
             pred_disp, entropy = model(imgL, imgR)
 
@@ -140,40 +146,60 @@ def main():
         pred_disp = pred_disp[top_pad:, :pred_disp.shape[1] - left_pad]
 
         # save predictions
-        # idxname = im0_path.split('/')[-2]
         idxname = img_name
-        if not os.path.exists('%s/%s' % (args.outdir, idxname)):
-            os.makedirs('%s/%s' % (args.outdir, idxname))
-        idxname = '%s/disp0%s' % (idxname, args.outdir)
+        if not os.path.exists('%s/%s' % (args.name, idxname)):
+            os.makedirs('%s/%s' % (args.name, idxname))
+        idxname = '%s/disp0%s' % (idxname, args.name)
 
         # resize to highres
-        pred_disp = cv2.resize(pred_disp / args.testres, (origianl_image_size[1], origianl_image_size[0]), interpolation=cv2.INTER_LINEAR)
+        pred_disp_raw = cv2.resize(pred_disp / args.testres, (origianl_image_size[1], origianl_image_size[0]), interpolation=cv2.INTER_LINEAR)
+        pred_disp = pred_disp_raw # raw is to use for scoring
+
+        gt_path = os.path.join(data_path, "disp0GT.pfm")
+        gt_disp_raw = readPFM(gt_path)[0]
+        gt_disp = gt_disp_raw
+
 
         # clip while keep inf
-        invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
-        pred_disp[invalid] = np.inf
+        pred_invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
+        pred_disp[pred_invalid] = np.inf
+        pred_disp_png = pred_disp / pred_disp[~pred_invalid].max() * 255
 
-        # np.save('%s/%s-disp.npy' % (args.outdir, idxname.split('/')[0]), (pred_disp))
-        # np.save('%s/%s-ent.npy' % (args.outdir, idxname.split('/')[0]), (entropy))
-        pred_disp_png = pred_disp / pred_disp[~invalid].max() * 255
-        cv2.imwrite('%s/%s/disp.png' % (args.outdir, idxname.split('/')[0]),
+        gt_invalid = np.logical_or(gt_disp == np.inf, gt_disp != gt_disp)
+        gt_disp[gt_invalid] = np.inf
+        gt_disp_png = gt_disp / gt_disp[~gt_invalid].max() * 255
+
+        cv2.imwrite('%s/%s/disp.png' % (args.name, idxname.split('/')[0]),
                     pred_disp_png)
         entorpy_png = entropy / entropy.max() * 255
-        cv2.imwrite('%s/%s/ent.png' % (args.outdir, idxname.split('/')[0]), entropy / entropy.max() * 255)
+        cv2.imwrite('%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entropy / entropy.max() * 255)
 
-        out_pfm_path = '%s/%s.pfm' % (args.outdir, idxname)
+        out_pfm_path = '%s/%s.pfm' % (args.name, idxname)
         with open(out_pfm_path, 'w') as f:
             save_pfm(f, pred_disp[::-1, :])
-        with open('%s/%s/time%s.txt' % (args.outdir, idxname.split('/')[0], args.outdir), 'w') as f:
+        with open('%s/%s/time%s.txt' % (args.name, idxname.split('/')[0], args.name), 'w') as f:
             f.write(str(ttime))
         print("    output = " + out_pfm_path)
 
-        wandb.log({"hello":1},step=steps)
-        wandb.log({"disparity": wandb.Image(pred_disp_png, caption=img_name + ", " + str(pred_disp_png.shape + "time: " + str(ttime))), "entropy": wandb.Image(entorpy_png, caption=img_name + ", " + str(entorpy_png.shape)), "time": ttime}, step=steps)
+        caption = img_name + ", " + str(tuple(pred_disp_png.shape)) + ", max disparity = " +  str(int(max_disp[0])) + ", time = " + str(ttime)
+
+        # read GT depthmap and upload as jpg
+        wandb.log({"disparity": wandb.Image(pred_disp_png, caption=caption) , "gt": wandb.Image(gt_disp_png), "entropy": wandb.Image(entorpy_png, caption= str(entorpy_png.shape))}, step=steps)
         torch.cuda.empty_cache()
-    wandb.save()
+        steps+=1
 
+        # Todo: find out what mask0nocc does. It's probably not the same as KITTI's object map
+        if dataset_type == 2:
+            obj_map_path = os.path.join(data_path, "obj_map.png")
+        else:
+            obj_map_path = None
 
+        if args.score_results:
+            metrics = score_rvc.get_metrics(pred_disp_raw, gt_disp_raw, int(max_disp[0]), dataset_type, obj_map_path=obj_map_path)
+            wandb.log(metrics, step=steps)
+
+    if args.save_weights and os.path.exists(args.loadmodel):
+        wandb.save(args.loadmodel)
 
 if __name__ == '__main__':
     main()
