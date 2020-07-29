@@ -78,15 +78,15 @@ def main():
     model.eval()
     for inx in range(len(test_left_img)):
         print(test_left_img[inx])
-        imgL_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/ETH3D2017_playground_2s/im0.png').astype('float32'))[:, :, :3]
-        imgR_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/ETH3D2017_playground_2s/im1.png').astype('float32'))[:, :, :3]
+        imgL_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/Kitti2015_000028_10/im0.png').astype('float32'))[:, :, :3]
+        imgR_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/Kitti2015_000028_10/im1.png').astype('float32'))[:, :, :3]
         imgsize = imgL_o.shape[:2]
         # torch.save(imgL_o, "/home/isaac/high-res-stereo/debug/my_submission/img0.pt")
 
         if args.max_disp > 0:
             max_disp = int(args.max_disp)
         else:
-            with open('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/ETH3D2017_playground_2s/calib.txt') as f:
+            with open('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/Kitti2015_000028_10/calib.txt') as f:
                 lines = f.readlines()
                 max_disp = int(int(lines[6].split('=')[-1]))
 

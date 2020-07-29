@@ -9,9 +9,12 @@ from utils.eval import save_pfm
 from dataloader.RVCDataset import RVCDataset
 from torch.utils.data import DataLoader
 cudnn.benchmark = False
+import skimage
 import wandb
 import score_rvc
+from wandb import magic
 from utils.readpfm import readPFM
+import matplotlib.pyplot as plt
 
 # source: `rvc_devkit/stereo/util_stereo.py`
 # Returns a dict which maps the parameters to their values. The values (right
@@ -47,19 +50,26 @@ def main():
                         help='output level of output, default is level 1 (stage 3),\
                               can also use level 2 (stage 2) or level 3 (stage 1)')
     parser.add_argument('--debug_image', type=str, default=None)
-    parser.add_argument("--eth_testres" , type=int, default=3.5)
-    parser.add_argument("--score_results", action="store_true")
-    parser.add_argument("--score_weights", action="store_true")
+    parser.add_argument("--eth_testres" , type=float, default=3.5)
+    parser.add_argument("--score_results", action="store_true", default=False)
+    parser.add_argument("--save_weights", action="store_true", default=False)
+    parser.add_argument("--kitti", action="store_true", default=False)
+    parser.add_argument("--eth", action="store_true", default=False)
+    parser.add_argument("--mb", action="store_true", default=False)
+    parser.add_argument("--all_data", action="store_true", default=False)
+    parser.add_argument("--eval_train_only", action="store_true", default=False)
+    parser.add_argument("--debug", action="store_true", default=False)
     args = parser.parse_args()
 
-    wandb.init(name=args.name, project="rvc_stereo", save_code=True, magic=True, config=args)
+    wandb.init(name=args.name, project="rvc_stereo", save_code=True, magic=True, config=args, dir="/tmp")
 
-    use_adaptive_testres = False
-    if args.testres == -1:
-        use_adaptive_testres = True
+    kitti_merics = {}
+    eth_metrics = {}
+    mb_metrics = {}
 
     # construct model
     model = hsm(128, args.clean, level=args.level)
+    wandb.watch(model)
     model = nn.DataParallel(model, device_ids=[0])
     model.cuda()
 
@@ -74,39 +84,34 @@ def main():
 
     model.eval()
 
-    if args.testres > 0:
-        dataset = RVCDataset(args.datapath, testres=args.testres)
-    else:
-        dataset = RVCDataset(args.datapath, eth_testres=args.eth_testres)
+    dataset = RVCDataset(args)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     steps = 0
-    for (imgL, imgR, max_disp, origianl_image_size, dataset_type , data_path) in dataloader:
+    for (imgL, imgR, gt_disp_raw, max_disp, origianl_image_size, top_pad, left_pad, testres, dataset_type , data_path) in dataloader:
         # Todo: this is a hot fix. Must be fixed to handle batchsize greater than 1
         data_path = data_path[0]
         img_name = os.path.basename(os.path.normpath(data_path))
+        testres = float(testres[0])
+        gt_disp_raw = gt_disp_raw[0]
 
+        cum_metrics = None
+        if dataset_type == 0:
+            cum_metrics = mb_metrics
 
-        if args.debug_image != None and not args.debug_image in img_name:
-            continue
+        elif dataset_type == 1:
+            cum_metrics = eth_metrics
+
+        elif dataset_type == 2:
+            cum_metrics = kitti_merics
 
         print(img_name)
-
-        if use_adaptive_testres:
-            if dataset_type == 0: # Middlebury
-                args.testres = 1
-            elif dataset_type == 2:
-                args.testres = 1.8
-            elif dataset_type == 1: # Gengsahn said it's between 3~4. Find with linear grid search
-                args.testres = 3.5
-            else:
-                raise ValueError("name of the folder does not contain any of: kitti, middlebury, eth3d")
 
         if args.max_disp > 0:
             max_disp = int(args.max_disp)
 
         ## change max disp
-        tmpdisp = int(max_disp * args.testres // 64 * 64)
-        if (max_disp * args.testres / 64 * 64) > tmpdisp:
+        tmpdisp = int(max_disp * testres // 64 * 64)
+        if (max_disp * testres / 64 * 64) > tmpdisp:
             model.module.maxdisp = tmpdisp + 64
         else:
             model.module.maxdisp = tmpdisp
@@ -118,14 +123,19 @@ def main():
         print("    max disparity = " + str(model.module.maxdisp))
 
 
-        ##fast pad
-        max_h = int(imgL.shape[2] // 64 * 64)
-        max_w = int(imgL.shape[3] // 64 * 64)
-        if max_h < imgL.shape[2]: max_h += 64
-        if max_w < imgL.shape[3]: max_w += 64
+        # ##fast pad
+        # max_h = int(imgL.shape[2] // 64 * 64)
+        # max_w = int(imgL.shape[3] // 64 * 64)
+        # if max_h < imgL.shape[2]: max_h += 64
+        # if max_w < imgL.shape[3]: max_w += 64
 
         wandb.log({"imgL": wandb.Image(imgL, caption=img_name + ", " + str(tuple(imgL.shape))),
                    "imgR": wandb.Image(imgR, caption=img_name + ", " + str(tuple(imgR.shape)))}, step=steps)
+
+        # if args.debug:
+        #     input_img_path = '%s/%s/' % (args.name, img_name)
+        #     assert(cv2.imwrite(input_img_path+"imgR.png", imgR[0].permute(1, 2, 0).numpy()))
+        #     assert(cv2.imwrite(input_img_path + "imgL.png", imgL[0].permute(1, 2, 0).numpy()))
 
         with torch.no_grad():
             torch.cuda.synchronize()
@@ -135,13 +145,14 @@ def main():
 
             torch.cuda.synchronize()
             ttime = (time.time() - start_time)
-            torch.save(pred_disp, "/home/isaac/high-res-stereo/debug/rvc/out.pt")
 
             print('    time = %.2f' % (ttime * 1000))
         pred_disp = torch.squeeze(pred_disp).data.cpu().numpy()
 
-        top_pad = max_h - origianl_image_size[0][0]
-        left_pad = max_w - origianl_image_size[1][0]
+        # top_pad = max_h - origianl_image_size[0][0]
+        # left_pad = max_w - origianl_image_size[1][0]
+        top_pad = int(top_pad[0])
+        left_pad = int(left_pad[0])
         entropy = entropy[top_pad:, :pred_disp.shape[1] - left_pad].cpu().numpy()
         pred_disp = pred_disp[top_pad:, :pred_disp.shape[1] - left_pad]
 
@@ -152,27 +163,31 @@ def main():
         idxname = '%s/disp0%s' % (idxname, args.name)
 
         # resize to highres
-        pred_disp_raw = cv2.resize(pred_disp / args.testres, (origianl_image_size[1], origianl_image_size[0]), interpolation=cv2.INTER_LINEAR)
+        pred_disp_raw = cv2.resize(pred_disp / testres, (origianl_image_size[1], origianl_image_size[0]), interpolation=cv2.INTER_LINEAR)
         pred_disp = pred_disp_raw # raw is to use for scoring
 
-        gt_path = os.path.join(data_path, "disp0GT.pfm")
-        gt_disp_raw = readPFM(gt_path)[0]
-        gt_disp = gt_disp_raw
-
+        gt_disp = gt_disp_raw.numpy()
 
         # clip while keep inf
         pred_invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
         pred_disp[pred_invalid] = np.inf
-        pred_disp_png = pred_disp / pred_disp[~pred_invalid].max() * 255
+        pred_disp_png = (pred_disp).astype("uint16")
 
         gt_invalid = np.logical_or(gt_disp == np.inf, gt_disp != gt_disp)
         gt_disp[gt_invalid] = np.inf
-        gt_disp_png = gt_disp / gt_disp[~gt_invalid].max() * 255
+        # gt_disp_png = (gt_disp * 255).astype("uint16")
+        gt_disp_png = (gt_disp).astype("uint16")
 
-        cv2.imwrite('%s/%s/disp.png' % (args.name, idxname.split('/')[0]),
-                    pred_disp_png)
-        entorpy_png = entropy / entropy.max() * 255
-        cv2.imwrite('%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entropy / entropy.max() * 255)
+        # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
+        pred_disp_path = '%s/%s/disp.png' % (args.name, idxname.split('/')[0])
+        assert(cv2.imwrite(pred_disp_path, pred_disp_png))
+
+        gt_disp_path = '%s/%s/gt_disp.png' % (args.name, idxname.split('/')[0])
+        assert(cv2.imwrite(gt_disp_path, gt_disp_png))
+
+        entorpy_png = (entropy * 256).astype('uint16')
+        # get rid of dividing by max
+        assert(cv2.imwrite('%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entorpy_png))
 
         out_pfm_path = '%s/%s.pfm' % (args.name, idxname)
         with open(out_pfm_path, 'w') as f:
@@ -195,8 +210,32 @@ def main():
             obj_map_path = None
 
         if args.score_results:
-            metrics = score_rvc.get_metrics(pred_disp_raw, gt_disp_raw, int(max_disp[0]), dataset_type, obj_map_path=obj_map_path)
+            if pred_disp_raw.shape != gt_disp_raw.shape: # pred_disp_raw[375 x 1242] gt_disp_raw[675 x 2236]
+                ratio = float(gt_disp_raw.shape[1]) / pred_disp_raw.shape[1]
+                disp_resized = cv2.resize(pred_disp_raw, (gt_disp_raw.shape[1], gt_disp_raw.shape[0])) * ratio
+                pred_disp_raw = disp_resized # [675 x 2236]
+            if args.debug:
+                out_resized_pfm_path = '%s/%s/pred_scored.pfm' % (args.name, img_name)
+                with open(out_resized_pfm_path, 'w') as f:
+                    save_pfm(f, pred_disp_raw)
+
+                out_resized_gt_path = '%s/%s/gt_scored.pfm' % (args.name, img_name)
+                with open(out_resized_gt_path, 'w') as f:
+                    save_pfm(f, gt_disp_raw.numpy())
+                    # [675, 2236] np.inf == 1464079, np.NINF == 4875
+
+            # (disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path=None, obj_map_path=None, ABS_THRESH=3.0, REL_THRESH=0.05)
+            metrics = score_rvc.get_metrics(pred_disp_raw, gt_disp_raw, int(max_disp[0]), dataset_type, ('%s/%s' % (args.name, idxname.split('/')[0])), disp_path=pred_disp_path, gt_path=gt_disp_path, obj_map_path=obj_map_path, debug=args.debug)
+
+            avg_metrics = {}
+            for (key, val) in metrics.items():
+                if cum_metrics.get(key) == None:
+                    cum_metrics[key] = []
+                cum_metrics[key].append(val)
+                avg_metrics["avg_" + key] = sum(cum_metrics[key]) / len(cum_metrics[key])
+
             wandb.log(metrics, step=steps)
+            wandb.log(avg_metrics, step=steps)
 
     if args.save_weights and os.path.exists(args.loadmodel):
         wandb.save(args.loadmodel)
