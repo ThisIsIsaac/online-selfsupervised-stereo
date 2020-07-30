@@ -20,3 +20,8 @@ run.sh
 **/wandb
 *.pt
 wandb
+models
+output
+debug_output
+score_gengshan_kitti
+pycharm_debug_kitti
