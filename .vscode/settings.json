@@ -1,0 +1,7 @@
+{
+    "python.pythonPath": "/home/isaac/miniconda3/envs/high_res_stereo/bin/python",
+    "files.exclude": {
+        "**/debug_output": true,
+        "**/output": true
+    }
+}

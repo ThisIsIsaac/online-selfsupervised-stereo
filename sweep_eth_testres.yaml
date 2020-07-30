@@ -1,0 +1,25 @@
+program: test_rvc.py
+name: eth_testres
+method: random
+metric:
+  name: bad20
+  goal: minimize
+
+parameters:
+  eth_testres:
+    distribution: uniform
+    min: 2.0
+    max: 5.0
+    q: 0.1
+command:
+  - /home/isaac/miniconda3/envs/high_res_stereo
+  - ${interpreter}
+  - ${program}
+  - "--eth"
+  - "--score_results"
+  - "--save_weights"
+  - "--loadmodel /home/isaac/high-res-stereo/weights/final-768px.tar"
+  - "--name sweep_eth_testres"
+  - "--datapath /home/isaac/rvc_devkit/stereo/datasets_middlebury2014"
+  - "--level 1"
+  - ${args}
