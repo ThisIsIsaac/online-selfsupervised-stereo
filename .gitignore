@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 models/*.pyc
 trained*
+.vscode
 output*
 *.npy
 .ipynb_checkpoints/*

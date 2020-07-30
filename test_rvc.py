@@ -158,8 +158,10 @@ def main():
 
         # save predictions
         idxname = img_name
+
         if not os.path.exists('output/%s/%s' % (args.name, idxname)):
             os.makedirs('output/%s/%s' % (args.name, idxname))
+
         idxname = '%s/disp0%s' % (idxname, args.name)
 
         # resize to highres
@@ -179,10 +181,17 @@ def main():
         gt_disp_png = (gt_disp).astype("uint16")
 
         # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
+<<<<<<< HEAD
         pred_disp_path = 'output/%s/%s/disp.png' % (args.name, idxname.split('/')[0])
         assert(cv2.imwrite(pred_disp_path, pred_disp_png))
 
         gt_disp_path = 'output/%s/%s/gt_disp.png' % (args.name, idxname.split('/')[0])
+=======
+        pred_disp_path = '%s/%s/disp.png' % (args.name, idxname.split('/')[0])
+        assert(cv2.imwrite(pred_disp_path, pred_disp_png))
+
+        gt_disp_path = '%s/%s/gt_disp.png' % (args.name, idxname.split('/')[0])
+>>>>>>> origin/master
         assert(cv2.imwrite(gt_disp_path, gt_disp_png))
 
         entorpy_png = (entropy * 256).astype('uint16')
