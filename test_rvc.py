@@ -18,37 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib import colors
 from colorspacious import cspace_converter
-
-
-# input: unnormalized INT16
-def clean_disp(disp):
-    max_value = np.iinfo(disp.dtype).max
-
-    disp[disp==np.NINF] = max_value
-    disp[disp==np.inf] = max_value
-    norm = plt.Normalize()
-
-    return norm(disp)
-
-def save_colormap(x, path):
-    x = clean_disp(x)
-    _, ax = plt.subplots()
-
-    # Get RGB values for colormap and convert the colormap in
-    # CAM02-UCS colorspace.  lab[0, :, 0] is the lightness.
-    rgb = cm.get_cmap("plasma")(x)[:, :, :3]
-    lab = cspace_converter("sRGB1", "CAM02-UCS")(rgb)
-
-    cv2.imwrite(path, lab)
-
-    # Plot colormap L values.  Do separately for each category
-    # so each plot can be pretty.  To make scatter markers change
-    # color along plot:
-    # http://stackoverflow.com/questions/8202605/
-
-    # y_ = lab[:, :, 0]
-    # ax.scatter(x, y_, c=x, cmap="plasma", s=300, linewidths=0.0)
-    # plt.savefig(path)
+from utils.disp_converter import save_colormap
 
 # source: `rvc_devkit/stereo/util_stereo.py`
 # Returns a dict which maps the parameters to their values. The values (right
