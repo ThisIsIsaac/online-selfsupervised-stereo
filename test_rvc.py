@@ -200,13 +200,15 @@ def main():
         # ! Experimental color maps
         gt_disp_color_path = 'output/%s/%s/gt_disp_color.png' % (args.name, idxname.split('/')[0])
         pred_disp_color_path = 'output/%s/%s/disp_color.png' % (args.name, idxname.split('/')[0])
+        diff_disp_color_path = 'output/%s/%s/diff_color.png' % (args.name, idxname.split('/')[0])
         gt_colormap = convert_to_colormap(gt_disp_png)
         pred_colormap = convert_to_colormap(pred_disp_png)
+        diff_colormap = abs(gt_colormap - pred_colormap)
         # plt.get_cmap("plasma")
 
         assert(cv2.imwrite(gt_disp_color_path, gt_colormap))
         assert(cv2.imwrite(pred_disp_color_path, pred_colormap))
-
+        assert(cv2.imwrite(diff_disp_color_path, diff_colormap))
         # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
         
         assert(cv2.imwrite(pred_disp_path, pred_disp_png))
@@ -224,7 +226,8 @@ def main():
         caption = img_name + ", " + str(tuple(pred_disp_png.shape)) + ", max disparity = " +  str(int(max_disp[0])) + ", time = " + str(ttime)
 
         # read GT depthmap and upload as jpg
-        wandb.log({"disparity": wandb.Image(pred_disp_png, caption=caption) , "gt": wandb.Image(gt_disp_png), "entropy": wandb.Image(entorpy_png, caption= str(entorpy_png.shape))}, step=steps)
+        wandb.log({"pred": wandb.Image(pred_disp_png, caption=caption) , "gt": wandb.Image(gt_disp_png), "diff_color":wandb.Image(diff_colormap), 
+        "entropy": wandb.Image(entorpy_png, caption= str(entorpy_png.shape)),  "pred_color": wandb.Image(pred_colormap, caption=caption) , "gt_color": wandb.Image(gt_colormap)}, step=steps)
         torch.cuda.empty_cache()
         steps+=1
 
