@@ -15,6 +15,40 @@ import score_rvc
 from wandb import magic
 from utils.readpfm import readPFM
 import matplotlib.pyplot as plt
+from matplotlib import cm
+from matplotlib import colors
+from colorspacious import cspace_converter
+
+
+# input: unnormalized INT16
+def clean_disp(disp):
+    max_value = np.iinfo(disp.dtype).max
+
+    disp[disp==np.NINF] = max_value
+    disp[disp==np.inf] = max_value
+    norm = plt.Normalize()
+
+    return norm(disp)
+
+def save_colormap(x, path):
+    x = clean_disp(x)
+    _, ax = plt.subplots()
+
+    # Get RGB values for colormap and convert the colormap in
+    # CAM02-UCS colorspace.  lab[0, :, 0] is the lightness.
+    rgb = cm.get_cmap("plasma")(x)[:, :, :3]
+    lab = cspace_converter("sRGB1", "CAM02-UCS")(rgb)
+
+    cv2.imwrite(path, lab)
+
+    # Plot colormap L values.  Do separately for each category
+    # so each plot can be pretty.  To make scatter markers change
+    # color along plot:
+    # http://stackoverflow.com/questions/8202605/
+
+    # y_ = lab[:, :, 0]
+    # ax.scatter(x, y_, c=x, cmap="plasma", s=300, linewidths=0.0)
+    # plt.savefig(path)
 
 # source: `rvc_devkit/stereo/util_stereo.py`
 # Returns a dict which maps the parameters to their values. The values (right
@@ -80,7 +114,6 @@ def main():
     else:
         print('run with random init')
     print('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
-
 
     model.eval()
 
@@ -177,24 +210,40 @@ def main():
 
         gt_invalid = np.logical_or(gt_disp == np.inf, gt_disp != gt_disp)
         gt_disp[gt_invalid] = np.inf
-        # gt_disp_png = (gt_disp * 255).astype("uint16")
         gt_disp_png = (gt_disp).astype("uint16")
 
-        # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
-<<<<<<< HEAD
+        entorpy_png = (entropy).astype('uint16')
+
+        # to increase contrast in the png images
+        # contrast = 10
+        # gt_disp_png *= contrast
+        # pred_disp_png *= contrast
+        # entorpy_png *= contrast
+
         pred_disp_path = 'output/%s/%s/disp.png' % (args.name, idxname.split('/')[0])
-        assert(cv2.imwrite(pred_disp_path, pred_disp_png))
-
         gt_disp_path = 'output/%s/%s/gt_disp.png' % (args.name, idxname.split('/')[0])
-=======
-        pred_disp_path = '%s/%s/disp.png' % (args.name, idxname.split('/')[0])
+        
+
+        # ! Experimental color maps
+        gt_disp_color_path = 'output/%s/%s/gt_disp_color.png' % (args.name, idxname.split('/')[0])
+        pred_disp_color_path = 'output/%s/%s/disp_color.png' % (args.name, idxname.split('/')[0])
+        save_colormap(gt_disp_png, gt_disp_color_path)
+        save_colormap(pred_disp_png, pred_disp_color_path)
+        # plt.get_cmap("plasma")
+
+        norm = plt.Normalize()
+        colors = plt.cm.plasma(norm(gt_disp_png))
+
+        # pred_disp_color_png = colors.LinearSegmentedColormap.from_list("gt_disp_png", gt_disp_png)
+        assert(cv2.imwrite(gt_disp_color_path, colors))
+
+        # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
+        
         assert(cv2.imwrite(pred_disp_path, pred_disp_png))
 
-        gt_disp_path = '%s/%s/gt_disp.png' % (args.name, idxname.split('/')[0])
->>>>>>> origin/master
+        
         assert(cv2.imwrite(gt_disp_path, gt_disp_png))
 
-        entorpy_png = (entropy * 256).astype('uint16')
         # get rid of dividing by max
         assert(cv2.imwrite('%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entorpy_png))
 
