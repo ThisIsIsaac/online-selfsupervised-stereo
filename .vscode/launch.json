@@ -20,7 +20,7 @@
             "console": "integratedTerminal",
             "cwd": "/home/isaac/high-res-stereo",
             "env": {"CUDA_VISIBLE_DEVICES":"1"},
-            "args": ["--loadmodel", "./weights/kitti.tar", "--name", "pycharm_debug_kitti", 
+            "args": ["--loadmodel", "./weights/final-768px.tar", "--name", "pycharm_debug_kitti", 
                 "--score_results", "--kitti", "--eval_train_only", "--debug"]
         }
     ]

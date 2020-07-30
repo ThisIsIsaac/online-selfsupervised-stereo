@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib import colors
 from colorspacious import cspace_converter
-from utils.disp_converter import save_colormap
+from utils.disp_converter import convert_to_colormap
 
 # source: `rvc_devkit/stereo/util_stereo.py`
 # Returns a dict which maps the parameters to their values. The values (right
@@ -66,6 +66,9 @@ def main():
     args = parser.parse_args()
 
     wandb.init(name=args.name, project="rvc_stereo", save_code=True, magic=True, config=args, dir="/tmp")
+
+    if not os.path.exists("output"):
+        os.mkdir("output")
 
     kitti_merics = {}
     eth_metrics = {}
@@ -197,30 +200,24 @@ def main():
         # ! Experimental color maps
         gt_disp_color_path = 'output/%s/%s/gt_disp_color.png' % (args.name, idxname.split('/')[0])
         pred_disp_color_path = 'output/%s/%s/disp_color.png' % (args.name, idxname.split('/')[0])
-        save_colormap(gt_disp_png, gt_disp_color_path)
-        save_colormap(pred_disp_png, pred_disp_color_path)
+        gt_colormap = convert_to_colormap(gt_disp_png)
+        pred_colormap = convert_to_colormap(pred_disp_png)
         # plt.get_cmap("plasma")
 
-        norm = plt.Normalize()
-        colors = plt.cm.plasma(norm(gt_disp_png))
-
-        # pred_disp_color_png = colors.LinearSegmentedColormap.from_list("gt_disp_png", gt_disp_png)
-        assert(cv2.imwrite(gt_disp_color_path, colors))
+        assert(cv2.imwrite(gt_disp_color_path, gt_colormap))
+        assert(cv2.imwrite(pred_disp_color_path, pred_colormap))
 
         # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
         
         assert(cv2.imwrite(pred_disp_path, pred_disp_png))
-
-        
         assert(cv2.imwrite(gt_disp_path, gt_disp_png))
-
         # get rid of dividing by max
-        assert(cv2.imwrite('%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entorpy_png))
+        assert(cv2.imwrite('output/%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entorpy_png))
 
-        out_pfm_path = '%s/%s.pfm' % (args.name, idxname)
+        out_pfm_path = 'output/%s/%s.pfm' % (args.name, idxname)
         with open(out_pfm_path, 'w') as f:
             save_pfm(f, pred_disp[::-1, :])
-        with open('%s/%s/time%s.txt' % (args.name, idxname.split('/')[0], args.name), 'w') as f:
+        with open('output/%s/%s/time_%s.txt' % (args.name, idxname.split('/')[0], args.name), 'w') as f:
             f.write(str(ttime))
         print("    output = " + out_pfm_path)
 
@@ -243,17 +240,17 @@ def main():
                 disp_resized = cv2.resize(pred_disp_raw, (gt_disp_raw.shape[1], gt_disp_raw.shape[0])) * ratio
                 pred_disp_raw = disp_resized # [675 x 2236]
             if args.debug:
-                out_resized_pfm_path = '%s/%s/pred_scored.pfm' % (args.name, img_name)
+                out_resized_pfm_path = 'output/%s/%s/pred_scored.pfm' % (args.name, img_name)
                 with open(out_resized_pfm_path, 'w') as f:
                     save_pfm(f, pred_disp_raw)
 
-                out_resized_gt_path = '%s/%s/gt_scored.pfm' % (args.name, img_name)
+                out_resized_gt_path = 'output/%s/%s/gt_scored.pfm' % (args.name, img_name)
                 with open(out_resized_gt_path, 'w') as f:
                     save_pfm(f, gt_disp_raw.numpy())
                     # [675, 2236] np.inf == 1464079, np.NINF == 4875
 
             # (disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path=None, obj_map_path=None, ABS_THRESH=3.0, REL_THRESH=0.05)
-            metrics = score_rvc.get_metrics(pred_disp_raw, gt_disp_raw, int(max_disp[0]), dataset_type, ('%s/%s' % (args.name, idxname.split('/')[0])), disp_path=pred_disp_path, gt_path=gt_disp_path, obj_map_path=obj_map_path, debug=args.debug)
+            metrics = score_rvc.get_metrics(pred_disp_raw, gt_disp_raw, int(max_disp[0]), dataset_type, ('output/%s/%s' % (args.name, idxname.split('/')[0])), disp_path=pred_disp_path, gt_path=gt_disp_path, obj_map_path=obj_map_path, debug=args.debug)
 
             avg_metrics = {}
             for (key, val) in metrics.items():

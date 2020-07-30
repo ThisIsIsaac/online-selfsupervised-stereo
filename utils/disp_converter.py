@@ -16,7 +16,7 @@ def clean_disp(disp):
     return norm(disp)
 
 # Todo: the contrast is too low. Tried multiplying by constant (before & after normalization) but doesn't change anything\
-def save_colormap(x, path):
+def convert_to_colormap(x):
     x = clean_disp(x)
     _, ax = plt.subplots()
 
@@ -25,4 +25,4 @@ def save_colormap(x, path):
     rgb = cm.get_cmap("plasma")(x)[:, :, :3]
     lab = cspace_converter("sRGB1", "CAM02-UCS")(rgb)
 
-    cv2.imwrite(path, lab)
+    return lab
