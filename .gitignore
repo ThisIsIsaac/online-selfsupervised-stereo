@@ -7,7 +7,6 @@ output*
 *.npy
 .ipynb_checkpoints/*
 .ipynb_checkpoints
-weights/
 *.ipynb
 data-HRRS/
 mboutput/*.npy
@@ -20,7 +19,7 @@ run.sh
 **/wandb
 *.pt
 wandb
-models
+weights
 output
 debug_output
 score_gengshan_kitti
