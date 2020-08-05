@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib import colors
 from colorspacious import cspace_converter
-from utils.disp_converter import convert_to_colormap
+from utils.disp_converter import convert_to_colormap, get_diffs
 
 # source: `rvc_devkit/stereo/util_stereo.py`
 # Returns a dict which maps the parameters to their values. The values (right
@@ -147,16 +147,20 @@ def main():
             torch.cuda.synchronize()
             start_time = time.time()
 
+            # * output dimensions same as input dimensions
+            # * (ex: imgL[1, 3, 704, 2240] then pred_disp[1, 704, 2240])
             pred_disp, entropy = model(imgL, imgR)
 
             torch.cuda.synchronize()
             ttime = (time.time() - start_time)
 
             print('    time = %.2f' % (ttime * 1000))
+
+        # * squeeze (remove dimensions with size 1) (ex: pred_disp[1, 704, 2240] ->[704, 2240])
         pred_disp = torch.squeeze(pred_disp).data.cpu().numpy()
 
-        # top_pad = max_h - origianl_image_size[0][0]
-        # left_pad = max_w - origianl_image_size[1][0]
+        # * remove padded pixels from top and right side of the output
+        # * (ex: pred_disp[704, 2240] -> [675, 2236])
         top_pad = int(top_pad[0])
         left_pad = int(left_pad[0])
         entropy = entropy[top_pad:, :pred_disp.shape[1] - left_pad].cpu().numpy()
@@ -170,47 +174,56 @@ def main():
 
         idxname = '%s/disp0%s' % (idxname, args.name)
 
-        # resize to highres
+        # * shrink image back to the GT size (ex: pred_disp[675, 2236] -> [375, 1242])
+        # ! we element-wise divide pred_disp by testres becasue the image is shrinking,
+        # ! so the distance between pixels should also shrink by the same factor
         pred_disp_raw = cv2.resize(pred_disp / testres, (origianl_image_size[1], origianl_image_size[0]), interpolation=cv2.INTER_LINEAR)
         pred_disp = pred_disp_raw # raw is to use for scoring
 
         gt_disp = gt_disp_raw.numpy()
 
-        # clip while keep inf
+        # * clip while keep inf
+        # ? `pred_disp != pred_disp` is always true, right??
+        # ? `pred_disp[pred_invalid] = np.inf` why do this?
         pred_invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
         pred_disp[pred_invalid] = np.inf
-        pred_disp_png = (pred_disp).astype("uint16")
 
         gt_invalid = np.logical_or(gt_disp == np.inf, gt_disp != gt_disp)
         gt_disp[gt_invalid] = np.inf
-        gt_disp_png = (gt_disp).astype("uint16")
 
+        diff, false_negative_map, false_positive_map = get_diffs(gt_disp, pred_disp)
+
+        # * create .png savable versions by changing from `float32` -> `unint16`
+        # ! dont' need if we are going to call `interpolate` since it changes to `np.int16` for us
+        gt_disp_png = (gt_disp).astype("uint16")
+        pred_disp_png = (pred_disp).astype("uint16")
         entorpy_png = (entropy).astype('uint16')
 
-        # to increase contrast in the png images
-        # contrast = 10
-        # gt_disp_png *= contrast
-        # pred_disp_png *= contrast
-        # entorpy_png *= contrast
-
+        # ! Experimental color maps
         pred_disp_path = 'output/%s/%s/disp.png' % (args.name, idxname.split('/')[0])
         gt_disp_path = 'output/%s/%s/gt_disp.png' % (args.name, idxname.split('/')[0])
-        
-
-        # ! Experimental color maps
         gt_disp_color_path = 'output/%s/%s/gt_disp_color.png' % (args.name, idxname.split('/')[0])
         pred_disp_color_path = 'output/%s/%s/disp_color.png' % (args.name, idxname.split('/')[0])
         diff_disp_color_path = 'output/%s/%s/diff_color.png' % (args.name, idxname.split('/')[0])
-        gt_colormap = convert_to_colormap(gt_disp_png)
-        pred_colormap = convert_to_colormap(pred_disp_png)
-        diff_colormap = abs(gt_colormap - pred_colormap)
+        false_positive_color_path = 'output/%s/%s/false_positive_color.png' % (args.name, idxname.split('/')[0])
+            false_negative_color_path = 'output/%s/%s/false_negative_color.png' % (args.name, idxname.split('/')[0])
+
+
+        gt_colormap = convert_to_colormap(gt_disp)
+        pred_colormap = convert_to_colormap(pred_disp)
+        diff_colormap = convert_to_colormap(diff)
+        false_positive_colormap = convert_to_colormap(false_positive_map)
+        false_negative_colormap = convert_to_colormap(false_negative_map)
+
         # plt.get_cmap("plasma")
 
         assert(cv2.imwrite(gt_disp_color_path, gt_colormap))
         assert(cv2.imwrite(pred_disp_color_path, pred_colormap))
         assert(cv2.imwrite(diff_disp_color_path, diff_colormap))
+        assert(cv2.imwrite(false_positive_color_path, false_positive_colormap))
+        assert(cv2.imwrite(false_negative_color_path, false_negative_colormap))
         # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
-        
+
         assert(cv2.imwrite(pred_disp_path, pred_disp_png))
         assert(cv2.imwrite(gt_disp_path, gt_disp_png))
         # get rid of dividing by max
@@ -226,7 +239,7 @@ def main():
         caption = img_name + ", " + str(tuple(pred_disp_png.shape)) + ", max disparity = " +  str(int(max_disp[0])) + ", time = " + str(ttime)
 
         # read GT depthmap and upload as jpg
-        wandb.log({"pred": wandb.Image(pred_disp_png, caption=caption) , "gt": wandb.Image(gt_disp_png), "diff_color":wandb.Image(diff_colormap), 
+        wandb.log({"pred": wandb.Image(pred_disp_png, caption=caption) , "gt": wandb.Image(gt_disp_png), "diff_color":wandb.Image(diff_colormap),
         "entropy": wandb.Image(entorpy_png, caption= str(entorpy_png.shape)),  "pred_color": wandb.Image(pred_colormap, caption=caption) , "gt_color": wandb.Image(gt_colormap)}, step=steps)
         torch.cuda.empty_cache()
         steps+=1
