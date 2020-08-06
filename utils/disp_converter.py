@@ -18,10 +18,6 @@ def clean_disp(disp):
 # Todo: the contrast is too low. Tried multiplying by constant (before & after normalization) but doesn't change anything\
 def convert_to_colormap(x):
     x = clean_disp(x)
-    _, ax = plt.subplots()
-
-    # Get RGB values for colormap and convert the colormap in
-    # CAM02-UCS colorspace.  lab[0, :, 0] is the lightness.
     rgb = cm.get_cmap("plasma")(x)[:, :, :3]
     lab = cspace_converter("sRGB1", "CAM02-UCS")(rgb)
 

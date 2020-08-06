@@ -9,15 +9,8 @@ from utils.eval import save_pfm
 from dataloader.RVCDataset import RVCDataset
 from torch.utils.data import DataLoader
 cudnn.benchmark = False
-import skimage
 import wandb
 import score_rvc
-from wandb import magic
-from utils.readpfm import readPFM
-import matplotlib.pyplot as plt
-from matplotlib import cm
-from matplotlib import colors
-from colorspacious import cspace_converter
 from utils.disp_converter import convert_to_colormap
 
 # source: `rvc_devkit/stereo/util_stereo.py`
@@ -65,7 +58,7 @@ def main():
     parser.add_argument("--debug", action="store_true", default=False)
     args = parser.parse_args()
 
-    wandb.init(name=args.name, project="rvc_stereo", save_code=True, magic=True, config=args, dir="/tmp")
+    wandb.init(name=args.name, project="high-res-stereo", save_code=True, magic=True, config=args)
 
     if not os.path.exists("output"):
         os.mkdir("output")
@@ -128,20 +121,8 @@ def main():
         model.module.disp_reg64 = disparityregression(model.module.maxdisp, 64).cuda()
         print("    max disparity = " + str(model.module.maxdisp))
 
-
-        # ##fast pad
-        # max_h = int(imgL.shape[2] // 64 * 64)
-        # max_w = int(imgL.shape[3] // 64 * 64)
-        # if max_h < imgL.shape[2]: max_h += 64
-        # if max_w < imgL.shape[3]: max_w += 64
-
         wandb.log({"imgL": wandb.Image(imgL, caption=img_name + ", " + str(tuple(imgL.shape))),
                    "imgR": wandb.Image(imgR, caption=img_name + ", " + str(tuple(imgR.shape)))}, step=steps)
-
-        # if args.debug:
-        #     input_img_path = '%s/%s/' % (args.name, img_name)
-        #     assert(cv2.imwrite(input_img_path+"imgR.png", imgR[0].permute(1, 2, 0).numpy()))
-        #     assert(cv2.imwrite(input_img_path + "imgL.png", imgL[0].permute(1, 2, 0).numpy()))
 
         with torch.no_grad():
             torch.cuda.synchronize()
@@ -155,8 +136,6 @@ def main():
             print('    time = %.2f' % (ttime * 1000))
         pred_disp = torch.squeeze(pred_disp).data.cpu().numpy()
 
-        # top_pad = max_h - origianl_image_size[0][0]
-        # left_pad = max_w - origianl_image_size[1][0]
         top_pad = int(top_pad[0])
         left_pad = int(left_pad[0])
         entropy = entropy[top_pad:, :pred_disp.shape[1] - left_pad].cpu().numpy()
@@ -179,40 +158,46 @@ def main():
         # clip while keep inf
         pred_invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
         pred_disp[pred_invalid] = np.inf
-        pred_disp_png = (pred_disp).astype("uint16")
+        pred_disp_png = (pred_disp*256).astype("uint16")
 
         gt_invalid = np.logical_or(gt_disp == np.inf, gt_disp != gt_disp)
         gt_disp[gt_invalid] = np.inf
-        gt_disp_png = (gt_disp).astype("uint16")
+        gt_disp_png = (gt_disp*256).astype("uint16")
+        entorpy_png = (entropy*256).astype('uint16')
 
-        entorpy_png = (entropy).astype('uint16')
-
-        # to increase contrast in the png images
-        # contrast = 10
-        # gt_disp_png *= contrast
-        # pred_disp_png *= contrast
-        # entorpy_png *= contrast
-
+        # ! raw output to png
         pred_disp_path = 'output/%s/%s/disp.png' % (args.name, idxname.split('/')[0])
         gt_disp_path = 'output/%s/%s/gt_disp.png' % (args.name, idxname.split('/')[0])
+        assert(cv2.imwrite(pred_disp_path, pred_disp_png))
+        assert(cv2.imwrite(gt_disp_path, gt_disp_png))
+        assert(cv2.imwrite('output/%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entorpy_png))
         
-
         # ! Experimental color maps
         gt_disp_color_path = 'output/%s/%s/gt_disp_color.png' % (args.name, idxname.split('/')[0])
         pred_disp_color_path = 'output/%s/%s/disp_color.png' % (args.name, idxname.split('/')[0])
+        
         gt_colormap = convert_to_colormap(gt_disp_png)
         pred_colormap = convert_to_colormap(pred_disp_png)
-        # plt.get_cmap("plasma")
-
+        entropy_colormap = convert_to_colormap(entorpy_png)
         assert(cv2.imwrite(gt_disp_color_path, gt_colormap))
         assert(cv2.imwrite(pred_disp_color_path, pred_colormap))
-
-        # docs: https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html?highlight=imwrite#imwrite
         
-        assert(cv2.imwrite(pred_disp_path, pred_disp_png))
-        assert(cv2.imwrite(gt_disp_path, gt_disp_png))
-        # get rid of dividing by max
-        assert(cv2.imwrite('output/%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entorpy_png))
+        
+        # ! diff colormaps
+        diff_colormap_path = 'output/%s/%s/diff_color.png' % (args.name, idxname.split('/')[0])
+        false_positive_path = 'output/%s/%s/false_positive_color.png' % (args.name, idxname.split('/')[0])
+        false_negative_path = 'output/%s/%s/false_negative_color.png' % (args.name, idxname.split('/')[0])
+        gt_disp_png[gt_invalid] = pred_disp_png[gt_invalid]
+        gt_disp_png = gt_disp_png.astype("int32")
+        pred_disp_png = pred_disp_png.astype("int32")
+        
+        diff_colormap = convert_to_colormap(np.abs(gt_disp_png - pred_disp_png))
+        false_positive_colormap = convert_to_colormap(np.abs(np.clip(gt_disp_png - pred_disp_png, None, 0)))
+        false_negative_colormap = convert_to_colormap(np.abs(np.clip(gt_disp_png - pred_disp_png, 0, None)))
+        assert(cv2.imwrite(diff_colormap_path, diff_colormap))
+        assert(cv2.imwrite(false_positive_path, false_positive_colormap))
+        assert(cv2.imwrite(false_negative_path, false_negative_colormap))
+        
 
         out_pfm_path = 'output/%s/%s.pfm' % (args.name, idxname)
         with open(out_pfm_path, 'w') as f:
@@ -224,7 +209,8 @@ def main():
         caption = img_name + ", " + str(tuple(pred_disp_png.shape)) + ", max disparity = " +  str(int(max_disp[0])) + ", time = " + str(ttime)
 
         # read GT depthmap and upload as jpg
-        wandb.log({"disparity": wandb.Image(pred_disp_png, caption=caption) , "gt": wandb.Image(gt_disp_png), "entropy": wandb.Image(entorpy_png, caption= str(entorpy_png.shape))}, step=steps)
+        wandb.log({"disparity": wandb.Image(pred_colormap, caption=caption) , "gt": wandb.Image(gt_colormap), "entropy": wandb.Image(entropy_colormap, caption= str(entorpy_png.shape)),
+                   "diff":wandb.Image(diff_colormap), "false_positive":wandb.Image(false_positive_colormap), "false_negative":wandb.Image(false_negative_colormap)}, step=steps)
         torch.cuda.empty_cache()
         steps+=1
 
