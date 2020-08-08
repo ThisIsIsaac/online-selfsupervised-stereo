@@ -27,3 +27,4 @@ score_gengshan_kitti
 pycharm_debug_kitti
 train_output
 kitti_submission_output
+.vscode

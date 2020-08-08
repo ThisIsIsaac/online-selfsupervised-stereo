@@ -15,7 +15,7 @@ IMG_EXTENSIONS = [
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
 
-def dataloader(filepath, typ = 'train'):
+def dataloader(filepath, val=False):
 
   left_fold  = 'image_2/'
   right_fold = 'image_3/'
@@ -30,19 +30,19 @@ def dataloader(filepath, typ = 'train'):
     for idx in imglist:
       f.write(str(idx) + ": " + image[idx] + "\n")
 
-  if typ == 'train':
+  if not val:
     train = [image[i] for i in range(200) if i not in imglist]*100
-  elif typ == 'trainval':
+  elif val:
     train = [image[i] for i in range(200)]*80
   val = [image[i] for i in imglist]
 
-  left_train  = [filepath+left_fold+img for img in train]
-  right_train = [filepath+right_fold+img for img in train]
-  disp_train_L = [filepath+disp_L+img for img in train]
+  left_train  = [os.path.join(filepath, left_fold, img) for img in train]
+  right_train = [os.path.join(filepath, right_fold, img) for img in train]
+  disp_train_L = [os.path.join(filepath, disp_L, img) for img in train]
 
-  left_val  = [filepath+left_fold+img for img in val]
-  right_val = [filepath+right_fold+img for img in val]
-  disp_val_L = [filepath+disp_L+img for img in val]
+  left_val  = [os.path.join(filepath, left_fold, img) for img in val]
+  right_val = [os.path.join(filepath, right_fold, img) for img in val]
+  disp_val_L = [os.path.join(filepath, disp_L, img) for img in val]
 
   return left_train, right_train, disp_train_L, left_val, right_val, disp_val_L
 

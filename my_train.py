@@ -36,6 +36,8 @@ parser.add_argument('--savemodel', default='./',
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 parser.add_argument("--sync_bn", action="store_true", default=False)
+parser.add_argument("--val", action="store_true", default=False)
+
 args = parser.parse_args()
 torch.manual_seed(args.seed)
 
@@ -75,28 +77,28 @@ from dataloader import MiddleburyLoader as DA
 
 batch_size = args.batchsize
 scale_factor = args.maxdisp / 384.  # controls training resolution
-all_left_img, all_right_img, all_left_disp, all_right_disp = ls.dataloader('%s/HR-VS/trainingF' % args.database)
+all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val, disp_val_L, disp_val_R = ls.hr_dataloader('%s/HR-VS/trainingF' % args.database, val=args.val)
 loader_carla = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                                 rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=2)
 
-all_left_img, all_right_img, all_left_disp, all_right_disp = ls.dataloader(
-    '%s/Middlebury/mb-ex-training/trainingF' % args.database)  # mb-ex
+all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val, disp_val_L, disp_val_R = ls.mb_dataloader(
+    '%s/Middlebury/mb-ex-training/trainingF' % args.database, val=args.val)  # mb-ex
 loader_mb = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                              rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=0)
 
-all_left_img, all_right_img, all_left_disp, all_right_disp = lt.dataloader('%s/SceneFlow/' % args.database)
+all_left_img, all_right_img, all_left_disp, all_right_disp = lt.scene_dataloader('%s/SceneFlow/' % args.database, val=args.val)
 loader_scene = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                                 rand_scale=[0.9, 2.4 * scale_factor], order=2)
 
-all_left_img, all_right_img, all_left_disp, _, _, _ = lk15.dataloader('%s/KITTI2015/data_scene_flow/training/' % args.database,
-                                                                      typ='train')  # change to trainval when finetuning on KITTI
+all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader('%s/KITTI2015/data_scene_flow/training/' % args.database,
+                                                                      val=args.val)  # change to trainval when finetuning on KITTI
 loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
                                   order=0)
-all_left_img, all_right_img, all_left_disp = lk12.dataloader('%s/KITTI2012/data_stereo_flow/training/' % args.database)
+all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk12.dataloader('%s/KITTI2012/data_stereo_flow/training/' % args.database, val=args.val)
 loader_kitti12 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
                                   order=0)
 
-all_left_img, all_right_img, all_left_disp, _ = ls.eth_dataloader('%s/ETH3D/low-res-stereo/train/two_view_training' % args.database)
+all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = ls.eth_dataloader('%s/ETH3D/low-res-stereo/train/' % args.database, val=args.val)
 loader_eth3d = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
                                 order=0)
 
