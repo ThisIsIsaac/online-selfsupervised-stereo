@@ -19,12 +19,11 @@ except ImportError:
 
 
 class WandbLogger(object):
-
     def __init__(self, args):
         """Create a summary writer logging to log_dir."""
         if args.logname == None:
-            name = 'temp'
-        self.name = name
+            args.logname = 'temp'
+        self.name = args.logname
         wandb.init(name=self.name, save_code=True, magic=True, config=args)
         # if name is not None:
         #     try:
@@ -50,56 +49,10 @@ class WandbLogger(object):
         """Log a list of images."""
 
 
-
-        # img_summaries = []
-        # for i, img in enumerate(images):
-        #     # Write the image to a string
-        #     try:
-        #         s = StringIO()
-        #     except:
-        #         s = BytesIO()
-        #     scipy.misc.toimage(img).save(s, format="png")
-        #
-        #     # Create an Image object
-        #     img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
-        #                                height=img.shape[0],
-        #                                width=img.shape[1])
-        #     # Create a Summary value
-        #     img_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, i), image=img_sum))
-        #
-        # # Create and write Summary
-        # summary = tf.Summary(value=img_summaries)
-        # self.writer.add_summary(summary, step)
-
     def histo_summary(self, tag, values, step, bins=1000):
         """Log a histogram of the tensor of values."""
 
         wandb.log({tag:wandb.Histogram(np_histogram=np.histogram(values, bins=bins))})
-
-        # # Create a histogram using numpy
-        # counts, bin_edges = np.histogram(values, bins=bins)
-        #
-        # # Fill the fields of the histogram proto
-        # hist = tf.HistogramProto()
-        # hist.min = float(np.min(values))
-        # hist.max = float(np.max(values))
-        # hist.num = int(np.prod(values.shape))
-        # hist.sum = float(np.sum(values))
-        # hist.sum_squares = float(np.sum(values**2))
-        #
-        # # Drop the start of the first bin
-        # bin_edges = bin_edges[1:]
-        #
-        # # Add bin edges and counts
-        # for edge in bin_edges:
-        #     hist.bucket_limit.append(edge)
-        # for c in counts:
-        #     hist.bucket.append(c)
-        #
-        # # Create and write Summary
-        # summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
-        # self.writer.add_summary(summary, step)
-        # self.writer.flush()
 
     def to_np(self, x):
         return x.data.cpu().numpy()

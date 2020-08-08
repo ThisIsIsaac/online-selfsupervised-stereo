@@ -14,6 +14,7 @@ import numpy as np
 import time
 from models import hsm
 from utils import wandb_logger
+from sync_batchnorm.sync_batchnorm import convert_model
 
 torch.backends.cudnn.benchmark = True
 
@@ -22,7 +23,7 @@ parser.add_argument('--maxdisp', type=int, default=384,
                     help='maxium disparity')
 parser.add_argument('--logname', default='logname',
                     help='log name')
-parser.add_argument('--database', default='/ssd//',
+parser.add_argument('--database', default='/DATA1/isaac',
                     help='data path')
 parser.add_argument('--epochs', type=int, default=10,
                     help='number of epochs to train')
@@ -34,12 +35,17 @@ parser.add_argument('--savemodel', default='./',
                     help='save path')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
+parser.add_argument("--sync_bn", action="store_true", default=False)
 args = parser.parse_args()
 torch.manual_seed(args.seed)
 
 model = hsm(args.maxdisp, clean=False, level=1)
 
-model = nn.DataParallel(model)
+model = nn.DataParallel(model, device_ids=[0, 1])
+
+if args.sync_bn:
+    model = convert_model(model)
+
 model.cuda()
 
 # load model
@@ -69,28 +75,28 @@ from dataloader import MiddleburyLoader as DA
 
 batch_size = args.batchsize
 scale_factor = args.maxdisp / 384.  # controls training resolution
-all_left_img, all_right_img, all_left_disp, all_right_disp = ls.dataloader('%s/carla-highres/trainingF' % args.database)
+all_left_img, all_right_img, all_left_disp, all_right_disp = ls.dataloader('%s/HR-VS/trainingF' % args.database)
 loader_carla = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                                 rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=2)
 
 all_left_img, all_right_img, all_left_disp, all_right_disp = ls.dataloader(
-    '%s/mb-ex-training/trainingF' % args.database)  # mb-ex
+    '%s/Middlebury/mb-ex-training/trainingF' % args.database)  # mb-ex
 loader_mb = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                              rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=0)
 
-all_left_img, all_right_img, all_left_disp, all_right_disp = lt.dataloader('%s/sceneflow/' % args.database)
+all_left_img, all_right_img, all_left_disp, all_right_disp = lt.dataloader('%s/SceneFlow/' % args.database)
 loader_scene = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                                 rand_scale=[0.9, 2.4 * scale_factor], order=2)
 
-all_left_img, all_right_img, all_left_disp, _, _, _ = lk15.dataloader('%s/kitti_scene/training/' % args.database,
+all_left_img, all_right_img, all_left_disp, _, _, _ = lk15.dataloader('%s/KITTI2015/data_scene_flow/training/' % args.database,
                                                                       typ='train')  # change to trainval when finetuning on KITTI
 loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
                                   order=0)
-all_left_img, all_right_img, all_left_disp = lk12.dataloader('%s/data_stereo_flow/training/' % args.database)
+all_left_img, all_right_img, all_left_disp = lk12.dataloader('%s/KITTI2012/data_stereo_flow/training/' % args.database)
 loader_kitti12 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
                                   order=0)
 
-all_left_img, all_right_img, all_left_disp, _ = ls.dataloader('%s/eth3d/' % args.database)
+all_left_img, all_right_img, all_left_disp, _ = ls.eth_dataloader('%s/ETH3D/low-res-stereo/train/two_view_training' % args.database)
 loader_eth3d = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
                                 order=0)
 
@@ -151,7 +157,7 @@ def adjust_learning_rate(optimizer, epoch):
 
 def main():
     log = wandb_logger.WandbLogger(args)
-    wandb_logger.watch(model)
+    log.watch(model)
     total_iters = 0
 
     for epoch in range(1, args.epochs + 1):
@@ -170,10 +176,14 @@ def main():
             if total_iters % 100 == 0:
                 log.image_summary('train/left', imgL_crop[0:1], total_iters)
                 log.image_summary('train/right', imgR_crop[0:1], total_iters)
-                log.image_summary('train/gt0', disp_crop_L[0:1], total_iters)
+                log.image_summary('train/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
                 log.image_summary('train/entropy', vis['entropy'][0:1], total_iters)
-                log.histo_summary('train/disparity_hist', vis['output3'], total_iters)
-                log.histo_summary('train/gt_hist', np.asarray(disp_crop_L), total_iters)
+
+                # ! ERROR: maximum histogram length 512 
+                # log.histo_summary('train/disparity_hist', vis['output3'], total_iters)
+                # log.histo_summary('train/gt_hist', np.asarray(disp_crop_L), total_iters)
+
+                # log outputs of model
                 log.image_summary('train/output3', vis['output3'][0:1], total_iters)
                 log.image_summary('train/output4', vis['output4'][0:1], total_iters)
                 log.image_summary('train/output5', vis['output5'][0:1], total_iters)

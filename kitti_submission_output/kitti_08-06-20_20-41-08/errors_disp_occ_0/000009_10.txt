@@ -1,0 +1,7 @@
+0.005730 0.005730 0.002933 0.002933 0.005531 0.005531 1.000000 
+num_errors_bg: 511.000000
+num_pixels_bg: 89177.000000
+num_errors_fg: 20.000000
+num_pixels_bg: 6820.000000
+num_errors_all: 531.000000
+num_pixels_all: 95997.000000

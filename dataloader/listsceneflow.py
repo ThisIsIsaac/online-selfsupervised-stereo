@@ -16,13 +16,12 @@ def is_image_file(filename):
 def dataloader(filepath):
 
  classes = [d for d in os.listdir(filepath) if os.path.isdir(os.path.join(filepath, d))]
- image = [img for img in classes if img.find('frames_cleanpass') > -1]
+ image = [img for img in classes if img.find('cleanpass') > -1]
  disp  = [dsp for dsp in classes if dsp.find('disparity') > -1]
 
  monkaa_path = filepath + [x for x in image if 'monkaa' in x][0]
  monkaa_disp = filepath + [x for x in disp if 'monkaa' in x][0]
 
- 
  monkaa_dir  = os.listdir(monkaa_path)
 
  all_left_img=[]
@@ -46,8 +45,8 @@ def dataloader(filepath):
     if is_image_file(monkaa_path+'/'+dd+'/right/'+im):
      all_right_img.append(monkaa_path+'/'+dd+'/right/'+im)
 
- flying_path = filepath + [x for x in image if x == 'frames_cleanpass'][0]
- flying_disp = filepath + [x for x in disp if x == 'disparity'][0]
+ flying_path = filepath + [x for x in image if x == 'flyingthings_cleanpass'][0]
+ flying_disp = filepath + [x for x in disp if x == 'flyingthings_disparity'][0]
  flying_dir = flying_path+'/TRAIN/'
  subdir = ['A','B','C']
 

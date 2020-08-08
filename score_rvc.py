@@ -8,28 +8,15 @@ import os
 import matplotlib.pyplot as plt
 from subprocess import call
 import subprocess
-
+import pickle
 
 
 
 def get_metrics(disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path=None, obj_map_path=None, debug=False, ABS_THRESH=3.0, REL_THRESH=0.05):
-    mask = gt != np.inf
+    mask = np.logical_and(gt != np.inf, gt > 0)
     metrics = {}
     if disp.shape != gt.shape:
         raise ValueError("pred and GT must be of the same dimensions")
-
-    if debug:
-        plt.plot(gt[mask] - disp[mask])
-        plt.savefig(os.path.join(save_path, "debug.png"))
-
-
-
-    interpolated_raw_disp_path = os.path.join(save_path, "i_disp.png")
-
-    cv2.imwrite(interpolated_raw_disp_path, disp)
-
-    raw_gt_path = os.path.join(save_path, "raw_gt.png")
-    cv2.imwrite(raw_gt_path, disp)
 
     disp[disp > max_disp] = max_disp
 
@@ -62,21 +49,6 @@ def get_metrics(disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path
 
     # KITTI metric
     if datatype == 2:
-
-        # consulted: https://unix.stackexchange.com/questions/238180/execute-shell-commands-in-python
-        # command = ["/home/isaac/KITTI2015_devkit/cpp/eval_stereo", str(interpolated_raw_disp_path), str(raw_gt_path), str(obj_map_path)]
-        # proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #
-        # stdout, stderr = proc.communicate(timeout=10)
-        # if proc.returncode!=0:
-        #     print("subprocessError: " + str(proc.returncode))
-        #     raise ChildProcessError
-        #
-        # print("stdout: \n" + stdout.decode("ascii"))
-        # print("stderr: \n" + stderr.decode("ascii"))
-
-
-
         if obj_map_path == None:
             raise ValueError("object map path has to be given for KITTI")
 
@@ -95,14 +67,14 @@ def get_metrics(disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path
 
         for h in range(height):
             for w in range(width):
-                if mask[h][w] == False:
+                if bool(mask[h][w] == False):
                     continue
-                d_gt = gt[h][w]
-                d_est = disp[h][w]
+                d_gt = float(gt[h][w])
+                d_est = float(disp[h][w])
 
                 # source: devkit/cpp/evaluate_scene_flow.cpp
                 # do this for every pixel:
-                is_err = np.fabs(d_gt - d_est) > ABS_THRESH and np.fabs(d_gt - d_est) / np.fabs(d_gt) > REL_THRESH
+                is_err = np.fabs(d_gt - d_est) > ABS_THRESH and (np.fabs(d_gt - d_est) / np.fabs(d_gt)) > REL_THRESH
 
                 # backgrond
                 if obj_map[h][w] == 0:
@@ -117,6 +89,15 @@ def get_metrics(disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path
                     num_pixels_fg+=1
 
         num_pixels_all = num_pixels_bg + num_pixels_fg
+        
+        metrics["num_errors_bg"] = num_errors_bg
+        metrics["num_pixels_bg"] = num_pixels_bg
+        metrics["num_errors_fg"] = num_errors_fg
+        metrics["num_pixels_fg"] = num_pixels_fg
+        metrics["num_errors_all"] = num_errors_all
+        metrics["num_pixels_all"] = num_pixels_all
+
+        
         metrics["d_all"] = num_errors_all / num_pixels_all
         metrics["d_bg"] = num_errors_bg / num_pixels_bg
         metrics["d_fg"] = num_errors_fg / num_pixels_fg
@@ -148,4 +129,17 @@ def get_metrics(disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path
 
     metrics["avgerr"] = avgerr
     metrics["rms"] = rms
+    
+    if debug:
+        # interpolated_raw_disp_path = os.path.join(save_path, "i_disp.png")
+        # cv2.imwrite(interpolated_raw_disp_path, disp)
+
+        # raw_gt_path = os.path.join(save_path, "raw_gt.png")
+        # cv2.imwrite(raw_gt_path, gt)
+        
+        metrics_path = os.path.join(save_path, "metrics.txt")
+        with open(metrics_path, "w") as file:
+            for key,val in metrics.items():
+                file.write(key + ": " + str(float(val)) + "\n")
+    
     return metrics

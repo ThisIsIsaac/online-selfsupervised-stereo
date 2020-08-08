@@ -12,6 +12,7 @@ cudnn.benchmark = False
 import wandb
 import score_rvc
 from utils.disp_converter import convert_to_colormap
+from sync_batchnorm.sync_batchnorm import convert_model
 
 
 # source: `rvc_devkit/stereo/util_stereo.py`
@@ -70,6 +71,7 @@ def main():
 
     # construct model
     model = hsm(128, args.clean, level=args.level)
+    model = convert_model(model)
     wandb.watch(model)
     model = nn.DataParallel(model, device_ids=[0])
     model.cuda()
@@ -171,7 +173,7 @@ def main():
         pred_disp_png = (pred_disp*256).astype("uint16")
 
         gt_invalid = np.logical_or(gt_disp == np.inf, gt_disp != gt_disp)
-        gt_disp[gt_invalid] = np.inf
+        gt_disp[gt_invalid] = 0
         gt_disp_png = (gt_disp*256).astype("uint16")
         entorpy_png = (entropy*256).astype('uint16')
 
@@ -181,18 +183,18 @@ def main():
         assert(cv2.imwrite(pred_disp_path, pred_disp_png))
         assert(cv2.imwrite(gt_disp_path, gt_disp_png))
         assert(cv2.imwrite('output/%s/%s/ent.png' % (args.name, idxname.split('/')[0]), entorpy_png))
-        
+
         # ! Experimental color maps
         gt_disp_color_path = 'output/%s/%s/gt_disp_color.png' % (args.name, idxname.split('/')[0])
         pred_disp_color_path = 'output/%s/%s/disp_color.png' % (args.name, idxname.split('/')[0])
-        
+
         gt_colormap = convert_to_colormap(gt_disp_png)
         pred_colormap = convert_to_colormap(pred_disp_png)
         entropy_colormap = convert_to_colormap(entorpy_png)
         assert(cv2.imwrite(gt_disp_color_path, gt_colormap))
         assert(cv2.imwrite(pred_disp_color_path, pred_colormap))
-        
-        
+
+
         # ! diff colormaps
         diff_colormap_path = 'output/%s/%s/diff_color.png' % (args.name, idxname.split('/')[0])
         false_positive_path = 'output/%s/%s/false_positive_color.png' % (args.name, idxname.split('/')[0])
@@ -200,14 +202,14 @@ def main():
         gt_disp_png[gt_invalid] = pred_disp_png[gt_invalid]
         gt_disp_png = gt_disp_png.astype("int32")
         pred_disp_png = pred_disp_png.astype("int32")
-        
+
         diff_colormap = convert_to_colormap(np.abs(gt_disp_png - pred_disp_png))
         false_positive_colormap = convert_to_colormap(np.abs(np.clip(gt_disp_png - pred_disp_png, None, 0)))
         false_negative_colormap = convert_to_colormap(np.abs(np.clip(gt_disp_png - pred_disp_png, 0, None)))
         assert(cv2.imwrite(diff_colormap_path, diff_colormap))
         assert(cv2.imwrite(false_positive_path, false_positive_colormap))
         assert(cv2.imwrite(false_negative_path, false_negative_colormap))
-        
+
 
 
         out_pfm_path = 'output/%s/%s.pfm' % (args.name, idxname)
@@ -238,17 +240,15 @@ def main():
                 ratio = float(gt_disp_raw.shape[1]) / pred_disp_raw.shape[1]
                 disp_resized = cv2.resize(pred_disp_raw, (gt_disp_raw.shape[1], gt_disp_raw.shape[0])) * ratio
                 pred_disp_raw = disp_resized # [675 x 2236]
-            if args.debug:
-                out_resized_pfm_path = 'output/%s/%s/pred_scored.pfm' % (args.name, img_name)
-                with open(out_resized_pfm_path, 'w') as f:
-                    save_pfm(f, pred_disp_raw)
+            # if args.debug:
+            #     out_resized_pfm_path = 'output/%s/%s/pred_scored.pfm' % (args.name, img_name)
+            #     with open(out_resized_pfm_path, 'w') as f:
+            #         save_pfm(f, pred_disp_raw)
 
-                out_resized_gt_path = 'output/%s/%s/gt_scored.pfm' % (args.name, img_name)
-                with open(out_resized_gt_path, 'w') as f:
-                    save_pfm(f, gt_disp_raw.numpy())
-                    # [675, 2236] np.inf == 1464079, np.NINF == 4875
+            #     out_resized_gt_path = 'output/%s/%s/gt_scored.pfm' % (args.name, img_name)
+            #     with open(out_resized_gt_path, 'w') as f:
+            #         save_pfm(f, gt_disp_raw.numpy())
 
-            # (disp, gt, max_disp, datatype, save_path, disp_path=None, gt_path=None, obj_map_path=None, ABS_THRESH=3.0, REL_THRESH=0.05)
             metrics = score_rvc.get_metrics(pred_disp_raw, gt_disp_raw, int(max_disp[0]), dataset_type, ('output/%s/%s' % (args.name, idxname.split('/')[0])), disp_path=pred_disp_path, gt_path=gt_disp_path, obj_map_path=obj_map_path, debug=args.debug)
 
             avg_metrics = {}
