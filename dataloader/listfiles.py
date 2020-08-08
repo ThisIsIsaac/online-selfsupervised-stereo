@@ -16,8 +16,8 @@ def mb_dataloader(filepath, val=False):
 
     left_train  = [os.path.join(filepath,img_list[idx], "im0.png") for idx in range(len(img_list)) if idx not in val_idx_list]
     right_train = [os.path.join(filepath,img_list[idx], "im1.png") for idx in range(len(img_list)) if idx not in val_idx_list]
-    disp_train_L = [os.path.join(filepath,img_list[idx], "disp0GT.png") for idx in range(len(img_list)) if idx not in val_idx_list]
-    disp_train_R = [os.path.join(filepath,img_list[idx], "disp1GT.png") for idx in range(len(img_list)) if idx not in val_idx_list]
+    disp_train_L = [os.path.join(filepath,img_list[idx], "disp0GT.pfm") for idx in range(len(img_list)) if idx not in val_idx_list]
+    disp_train_R = [os.path.join(filepath,img_list[idx], "disp1GT.pfm") for idx in range(len(img_list)) if idx not in val_idx_list]
 
     left_val  = []
     right_val = []
@@ -27,8 +27,8 @@ def mb_dataloader(filepath, val=False):
     if val:
         left_val  = [os.path.join(filepath,img_list[idx], "im0.png") for idx in val_idx_list]
         right_val = [os.path.join(filepath,img_list[idx], "im1.png") for idx in val_idx_list]
-        disp_val_L = [os.path.join(filepath,img_list[idx], "disp0GT.png") for idx in val_idx_list]
-        disp_val_R = [os.path.join(filepath,img_list[idx], "disp1GT.png") for idx in val_idx_list]
+        disp_val_L = [os.path.join(filepath,img_list[idx], "disp0GT.pfm") for idx in val_idx_list]
+        disp_val_R = [os.path.join(filepath,img_list[idx], "disp1GT.pfm") for idx in val_idx_list]
 
     return left_train, right_train, disp_train_L, disp_train_R, left_val, right_val, disp_val_L, disp_val_R
 
@@ -57,13 +57,13 @@ def hr_dataloader(filepath, val=False):
     if val:
         left_val  = [os.path.join(filepath,img_list[idx], "im0.png") for idx in val_idx_list]
         right_val = [os.path.join(filepath,img_list[idx], "im1.png") for idx in val_idx_list]
-        disp_val_L = [os.path.join(filepath,img_list[idx], "disp0GT.png") for idx in val_idx_list]
-        disp_val_R = [os.path.join(filepath,img_list[idx], "disp1GT.png") for idx in val_idx_list]
+        disp_val_L = [os.path.join(filepath,img_list[idx], "disp0GT.pfm") for idx in val_idx_list]
+        disp_val_R = [os.path.join(filepath,img_list[idx], "disp1GT.pfm") for idx in val_idx_list]
 
     left_train  = [os.path.join(filepath,img_list[idx], "im0.png") for idx in range(len(img_list)) if idx not in val_idx_list]
     right_train = [os.path.join(filepath,img_list[idx], "im1.png") for idx in range(len(img_list)) if idx not in val_idx_list]
-    disp_train_L = [os.path.join(filepath,img_list[idx], "disp0GT.png") for idx in range(len(img_list)) if idx not in val_idx_list]
-    disp_train_R = [os.path.join(filepath,img_list[idx], "disp1GT.png") for idx in range(len(img_list)) if idx not in val_idx_list]
+    disp_train_L = [os.path.join(filepath,img_list[idx], "disp0GT.pfm") for idx in range(len(img_list)) if idx not in val_idx_list]
+    disp_train_R = [os.path.join(filepath,img_list[idx], "disp1GT.pfm") for idx in range(len(img_list)) if idx not in val_idx_list]
 
     return left_train, right_train, disp_train_L, disp_train_R, left_val, right_val, disp_val_L, disp_val_R
 
@@ -84,13 +84,13 @@ def eth_dataloader(filepath, val=False):
     disp_list.sort()
 
     if val:
-        left_val = [os.path.join(filepath,img_list[idx], "im0.png") for idx in val_idx]
-        left_val = [os.path.join(filepath,img_list[idx], "im1.png") for idx in val_idx]
-        disp_val_L = [os.path.join(filepath,disp_list[idx], "disp0GT.png") for idx in val_idx]
+        left_val = [os.path.join(img_path,img_list[idx], "im0.png") for idx in val_idx]
+        left_val = [os.path.join(img_path,img_list[idx], "im1.png") for idx in val_idx]
+        disp_val_L = [os.path.join(disp_path,disp_list[idx], "disp0GT.pfm") for idx in val_idx]
 
-    left_train  = [os.path.join(filepath,img_list[idx], "im0.png") for idx in range(len(img_list)) if idx not in val_idx]
-    right_train = [os.path.join(filepath,img_list[idx], "im1.png") for idx in range(len(img_list)) if idx not in val_idx]
-    disp_train_L = [os.path.join(filepath,disp_list[idx], "disp0GT.png") for idx in range(len(img_list)) if idx not in val_idx]
+    left_train  = [os.path.join(img_path,img_list[idx], "im0.png") for idx in range(len(img_list)) if idx not in val_idx]
+    right_train = [os.path.join(img_path,img_list[idx], "im1.png") for idx in range(len(img_list)) if idx not in val_idx]
+    disp_train_L = [os.path.join(disp_path,disp_list[idx], "disp0GT.pfm") for idx in range(len(img_list)) if idx not in val_idx]
 
     return left_train, right_train, disp_train_L, left_val, right_val, disp_val_L
 

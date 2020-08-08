@@ -81,34 +81,53 @@ all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val,
 loader_carla = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                                 rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=2)
 
+val_loader_carla = DA.myImageFloder(left_val, right_val, disp_val_L, right_disparity=disp_val_R,
+                                rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=2)
+
 all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val, disp_val_L, disp_val_R = ls.mb_dataloader(
     '%s/Middlebury/mb-ex-training/trainingF' % args.database, val=args.val)  # mb-ex
 loader_mb = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
                              rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=0)
+val_loader_mb = DA.myImageFloder(left_val, right_val, disp_val_L, right_disparity=disp_val_R,
+                             rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=0)
 
-all_left_img, all_right_img, all_left_disp, all_right_disp = lt.scene_dataloader('%s/SceneFlow/' % args.database, val=args.val)
+all_left_img, all_right_img, all_left_disp, all_right_disp, val_left_img, val_right_img, val_left_disp, val_right_disp = lt.scene_dataloader('%s/SceneFlow/' % args.database, val=args.val)
 loader_scene = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
+                                rand_scale=[0.9, 2.4 * scale_factor], order=2)
+val_loader_scene = DA.myImageFloder(val_left_img, val_right_img, val_left_disp, right_disparity=val_right_disp,
                                 rand_scale=[0.9, 2.4 * scale_factor], order=2)
 
 all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader('%s/KITTI2015/data_scene_flow/training/' % args.database,
                                                                       val=args.val)  # change to trainval when finetuning on KITTI
 loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
                                   order=0)
+val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=[0.9, 2.4 * scale_factor],
+                                  order=0)
+
 all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk12.dataloader('%s/KITTI2012/data_stereo_flow/training/' % args.database, val=args.val)
 loader_kitti12 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
+                                  order=0)
+val_loader_kitti12 = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=[0.9, 2.4 * scale_factor],
                                   order=0)
 
 all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = ls.eth_dataloader('%s/ETH3D/low-res-stereo/train/' % args.database, val=args.val)
 loader_eth3d = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
+                                order=0)
+val_loader_eth3d = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=[0.9, 2.4 * scale_factor],
                                 order=0)
 
 data_inuse = torch.utils.data.ConcatDataset(
     [loader_carla] * 40 + [loader_mb] * 500 + [loader_scene] + [loader_kitti15] + [loader_kitti12] * 80 + [
         loader_eth3d] * 1000)
 
+data_val = torch.utils.data.ConcatDataset([val_loader_carla, val_loader_eth3d, val_loader_kitti12, val_loader_kitti15, val_loader_mb, val_loader_scene])
+
 TrainImgLoader = torch.utils.data.DataLoader(
     data_inuse,
     batch_size=batch_size, shuffle=True, num_workers=batch_size, drop_last=True, worker_init_fn=_init_fn)
+
+ValImgLoader = torch.utils.data.DataLoader(
+    data_val, batch_size=batch_size, shuffle=False, num_workers=batch_size, drop_last=False, worker_init_fn=_init_fn)
 
 print('%d batches per epoch' % (len(data_inuse) // batch_size))
 
