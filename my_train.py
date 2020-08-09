@@ -31,10 +31,11 @@ parser.add_argument('--batchsize', type=int, default=28,
                     help='samples per batch')
 parser.add_argument('--loadmodel', default=None,
                     help='weights path')
-parser.add_argument('--savemodel', default='./',
+parser.add_argument('--savemodel', default='/home/isaac/high-res-stereo/train_output',
                     help='save path')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
+parser.add_argument('--val_epoch', type=int, default=1)
 parser.add_argument("--sync_bn", action="store_true", default=False)
 parser.add_argument("--val", action="store_true", default=False)
 
@@ -165,6 +166,39 @@ def train(imgL, imgR, disp_L):
     del loss
     return lossvalue, vis
 
+def validate(imgL, imgR, disp_L):
+    model.eval()
+
+    with torch.no_grad():
+        imgL = torch.FloatTensor(imgL)
+        imgR = torch.FloatTensor(imgR)
+        disp_L = torch.FloatTensor(disp_L)
+
+        imgL, imgR, disp_true = imgL.cuda(), imgR.cuda(), disp_L.cuda()
+
+        # ---------
+        mask = (disp_true > 0) & (disp_true < args.maxdisp)
+        mask.detach_()
+        # ----
+
+        stacked, entropy = model(imgL, imgR)
+        loss = (64. / 85) * F.smooth_l1_loss(stacked[0][mask], disp_true[mask], size_average=True) + \
+            (16. / 85) * F.smooth_l1_loss(stacked[1][mask], disp_true[mask], size_average=True) + \
+            (4. / 85) * F.smooth_l1_loss(stacked[2][mask], disp_true[mask], size_average=True) + \
+            (1. / 85) * F.smooth_l1_loss(stacked[3][mask], disp_true[mask], size_average=True)
+
+        vis = {}
+        vis['output3'] = stacked[0].detach().cpu().numpy()
+        vis['output4'] = stacked[1].detach().cpu().numpy()
+        vis['output5'] = stacked[2].detach().cpu().numpy()
+        vis['output6'] = stacked[3].detach().cpu().numpy()
+        vis['entropy'] = entropy.detach().cpu().numpy()
+        lossvalue = loss.data
+
+        del stacked
+        del loss
+        return lossvalue, vis
+
 
 def adjust_learning_rate(optimizer, epoch):
     if epoch <= args.epochs - 1:
@@ -180,6 +214,8 @@ def main():
     log = wandb_logger.WandbLogger(args)
     log.watch(model)
     total_iters = 0
+    save_path = os.path.join(args.savemodel, args.logname + "_" + time.strftime('%l:%M%p_%Y%b%d').strip(" "))
+    os.mkdir(save_path)
 
     for epoch in range(1, args.epochs + 1):
         total_train_loss = 0
@@ -200,7 +236,7 @@ def main():
                 log.image_summary('train/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
                 log.image_summary('train/entropy', vis['entropy'][0:1], total_iters)
 
-                # ! ERROR: maximum histogram length 512 
+                # ! ERROR: maximum histogram length 512
                 # log.histo_summary('train/disparity_hist', vis['output3'], total_iters)
                 # log.histo_summary('train/gt_hist', np.asarray(disp_crop_L), total_iters)
 
@@ -214,7 +250,8 @@ def main():
 
             if (total_iters + 1) % 2000 == 0:
                 # SAVE
-                savefilename = args.savemodel + '/' + args.logname + '/finetune_' + str(total_iters) + '.tar'
+                savefilename = os.path.join(save_path, 'finetune_' + str(total_iters) + '.tar')
+
                 torch.save({
                     'iters': total_iters,
                     'state_dict': model.state_dict(),
@@ -222,6 +259,35 @@ def main():
                 }, savefilename)
 
         log.scalar_summary('train/loss', total_train_loss / len(TrainImgLoader), epoch)
+
+        if epoch % args.val_epoch == 0:
+            total_val_loss = 0
+            for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(ValImgLoader):
+                start_time = time.time()
+                loss, vis = validate(imgL_crop, imgR_crop, disp_crop_L)
+                print('Val iter %d training loss = %.3f , time = %.2f' % (batch_idx, loss, time.time() - start_time))
+                total_val_loss+= loss
+
+                if batch_idx % 10 == 0:
+                    log.scalar_summary('val/loss_batch', loss, total_iters)
+                if batch_idx % 100 == 0:
+                    log.image_summary('val/left', imgL_crop[0:1], total_iters)
+                    log.image_summary('val/right', imgR_crop[0:1], total_iters)
+                    log.image_summary('val/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
+                    log.image_summary('val/entropy', vis['entropy'][0:1], total_iters)
+
+                    # ! ERROR: maximum histogram length 512
+                    # log.histo_summary('train/disparity_hist', vis['output3'], total_iters)
+                    # log.histo_summary('train/gt_hist', np.asarray(disp_crop_L), total_iters)
+
+                    # log outputs of model
+                    log.image_summary('val/output3', vis['output3'][0:1], total_iters)
+                    log.image_summary('val/output4', vis['output4'][0:1], total_iters)
+                    log.image_summary('val/output5', vis['output5'][0:1], total_iters)
+                    log.image_summary('val/output6', vis['output6'][0:1], total_iters)
+
+            log.scalar_summary('val/loss', total_val_loss / len(ValImgLoader), 1)
+
         torch.cuda.empty_cache()
 
 
