@@ -42,14 +42,14 @@ class WandbLogger(object):
         # summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
         # self.writer.add_summary(summary, step)
 
-    def image_summary(self, tag, img, step, caption=None):
+    def image_summary(self, tag, img, step, caption=None, get_color=False):
         """Log an image."""
-        img = self.to_jpg(img)
+        # img = self.to_jpg(img)
 
-        color = disp_converter.convert_to_colormap(img)
-
-        data = {tag: wandb.Image(img, caption=caption), tag+"_color": wandb.Image(color, caption=caption)}
-
+        data = {tag: wandb.Image(img, caption=caption)}
+        # if get_color:
+        #     color = disp_converter.convert_to_colormap(img)
+        #     data[tag+"_color"] = wandb.Image(color, caption=caption)
         wandb.log(data,  step=step)
 
     def diff_summary(self, tag, gt, pred, step, caption=None):

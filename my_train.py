@@ -21,7 +21,7 @@ from collections import Counter
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser(description='HSM-Net')
-parser.add_argument('--maxdisp', type=int, default=384,
+parser.add_argument('--maxdisp', type=int, default=768,
                     help='maxium disparity')
 parser.add_argument('--logname', default='logname',
                     help='log name')
@@ -46,7 +46,7 @@ torch.manual_seed(args.seed)
 
 model = hsm(args.maxdisp, clean=False, level=1)
 
-model = nn.DataParallel(model, device_ids=[0])
+model = nn.DataParallel(model, device_ids=[0, 1])
 
 if args.sync_bn:
     model = convert_model(model)
@@ -107,9 +107,9 @@ val_loader_scene = DA.myImageFloder(val_left_img, val_right_img, val_left_disp, 
 
 all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader('%s/KITTI2015/data_scene_flow/training/' % args.database,
                                                                       val=args.val)  # change to trainval when finetuning on KITTI
-loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.225, 0.6 * scale_factor],
+loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=kitti_scale_range,
                                   order=0)
-val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=[0.225, 0.6 * scale_factor],
+val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=kitti_scale_range,
                                   order=0)
 
 all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk12.dataloader('%s/KITTI2012/data_stereo_flow/training/' % args.database, val=args.val)
@@ -120,12 +120,12 @@ val_loader_kitti12 = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scal
 
 # ! Gengshan didn't tell me to change ETH explicitly, just change kitti. Although he didn't mention explicitly, it may be better to chagne ETH as well, so will go a head
 all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = ls.eth_dataloader('%s/ETH3D/low-res-stereo/train/' % args.database, val=args.val)
-loader_eth3d = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=eth_scale_range, order=0)
-val_loader_eth3d = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=eth_scale_range, order=0)
+loader_eth3d = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=kitti_scale_range, order=0)
+val_loader_eth3d = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=kitti_scale_range, order=0)
 
 # * Gengshan told me to double the loader_kitti15's proportion by multiplying 2
 data_inuse = torch.utils.data.ConcatDataset(
-    [loader_carla] * 40 + [loader_mb] * 500 + [loader_scene] + [loader_kitti15] * 2 + [loader_kitti12] * 80 + [
+    [loader_carla] * 40 + [loader_mb] * 500 + [loader_scene] + [loader_kitti15] * 8 + [loader_kitti12] * 80 + [
         loader_eth3d] * 1000)
 
 data_val = torch.utils.data.ConcatDataset([val_loader_carla, val_loader_eth3d, val_loader_kitti12, val_loader_kitti15, val_loader_mb, val_loader_scene])
@@ -134,8 +134,8 @@ TrainImgLoader = torch.utils.data.DataLoader(
     data_inuse,
     batch_size=batch_size, shuffle=True, num_workers=batch_size, drop_last=True, worker_init_fn=_init_fn)
 
-ValImgLoader = torch.utils.data.DataLoader(
-    data_val, batch_size=batch_size, shuffle=False, num_workers=batch_size, drop_last=False, worker_init_fn=_init_fn)
+# ValImgLoader = torch.utils.data.DataLoader(
+#     data_val, batch_size=batch_size, shuffle=False, num_workers=batch_size, drop_last=False, worker_init_fn=_init_fn)
 
 print('%d batches per epoch' % (len(data_inuse) // batch_size))
 
@@ -272,20 +272,20 @@ def main():
 
                 log.image_summary('train/left', imgL_crop[0:1], total_iters)
                 log.image_summary('train/right', imgR_crop[0:1], total_iters)
-                log.image_summary('train/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
-                log.image_summary('train/entropy', vis['entropy'][0:1], total_iters)
+                log.image_summary('train/gt0', disp_crop_L[0:1], total_iters, get_color=True) # <-- GT disp
+                log.image_summary('train/entropy', vis['entropy'][0:1], total_iters, get_color=True)
 
                 # ! ERROR: maximum histogram length 512
                 # log.histo_summary('train/disparity_hist', vis['output3'], total_iters)
                 # log.histo_summary('train/gt_hist', np.asarray(disp_crop_L), total_iters)
 
                 # log outputs of model
-                log.image_summary('train/output3', vis['output3'][0:1], total_iters)
-                log.image_summary('train/output4', vis['output4'][0:1], total_iters)
-                log.image_summary('train/output5', vis['output5'][0:1], total_iters)
-                log.image_summary('train/output6', vis['output6'][0:1], total_iters)
+                log.image_summary('train/output3', vis['output3'][0:1], total_iters, get_color=True)
+                log.image_summary('train/output4', vis['output4'][0:1], total_iters, get_color=True)
+                log.image_summary('train/output5', vis['output5'][0:1], total_iters, get_color=True)
+                log.image_summary('train/output6', vis['output6'][0:1], total_iters, get_color=True)
 
-                log.diff_summary("train/output3_diff", disp_crop_L[0:1], vis['output3'][0:1])
+                # log.diff_summary("train/output3_diff", disp_crop_L[0:1], vis['output3'][0:1], total_iters)
 
             total_iters += 1
 

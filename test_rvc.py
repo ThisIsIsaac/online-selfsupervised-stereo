@@ -59,7 +59,7 @@ def main():
     parser.add_argument("--all_data", action="store_true", default=False)
     parser.add_argument("--eval_train_only", action="store_true", default=False)
     parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--parepare_kitti", action="store_true", default=False)
+    parser.add_argument("--prepare_kitti", action="store_true", default=False)
     args = parser.parse_args()
 
     wandb.init(name=args.name, project="high-res-stereo", save_code=True, magic=True, config=args)
