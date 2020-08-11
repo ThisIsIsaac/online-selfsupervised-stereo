@@ -228,34 +228,34 @@ def main():
         total_train_loss = 0
         adjust_learning_rate(optimizer, epoch)
 
-        if epoch % args.val_epoch == 0:
-            total_val_loss = 0
-            for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(ValImgLoader):
-                start_time = time.time()
-                loss, vis = validate(imgL_crop, imgR_crop, disp_crop_L)
-                print('Val iter %d training loss = %.3f , time = %.2f' % (batch_idx, loss, time.time() - start_time))
-                total_val_loss+= loss
+        # if epoch % args.val_epoch == 0:
+        #     total_val_loss = 0
+        #     for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(ValImgLoader):
+        #         start_time = time.time()
+        #         loss, vis = validate(imgL_crop, imgR_crop, disp_crop_L)
+        #         print('Val iter %d training loss = %.3f , time = %.2f' % (batch_idx, loss, time.time() - start_time))
+        #         total_val_loss+= loss
 
-                if batch_idx % 10 == 0:
-                    log.scalar_summary('val/loss_batch', loss, total_iters)
-                if batch_idx % 100 == 0:
-                    log.image_summary('val/left', imgL_crop[0:1], total_iters)
-                    log.image_summary('val/right', imgR_crop[0:1], total_iters)
-                    log.image_summary('val/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
-                    log.image_summary('val/entropy', vis['entropy'][0:1], total_iters)
+        #         if batch_idx % 10 == 0:
+        #             log.scalar_summary('val/loss_batch', loss, total_iters)
+        #         if batch_idx % 100 == 0:
+        #             log.image_summary('val/left', imgL_crop[0:1], total_iters)
+        #             log.image_summary('val/right', imgR_crop[0:1], total_iters)
+        #             log.image_summary('val/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
+        #             log.image_summary('val/entropy', vis['entropy'][0:1], total_iters)
 
-                    # ! ERROR: maximum histogram length 512
-                    # log.histo_summary('train/disparity_hist', vis['output3'], total_iters)
-                    # log.histo_summary('train/gt_hist', np.asarray(disp_crop_L), total_iters)
+        #             # ! ERROR: maximum histogram length 512
+        #             # log.histo_summary('train/disparity_hist', vis['output3'], total_iters)
+        #             # log.histo_summary('train/gt_hist', np.asarray(disp_crop_L), total_iters)
 
-                    # log outputs of model
-                    log.image_summary('val/output3', vis['output3'][0:1], total_iters)
-                    log.image_summary('val/output4', vis['output4'][0:1], total_iters)
-                    log.image_summary('val/output5', vis['output5'][0:1], total_iters)
-                    log.image_summary('val/output6', vis['output6'][0:1], total_iters)
-                    log.diff_summary("val/output3_diff", disp_crop_L[0:1], vis['output3'][0:1])
+        #             # log outputs of model
+        #             log.image_summary('val/output3', vis['output3'][0:1], total_iters)
+        #             log.image_summary('val/output4', vis['output4'][0:1], total_iters)
+        #             log.image_summary('val/output5', vis['output5'][0:1], total_iters)
+        #             log.image_summary('val/output6', vis['output6'][0:1], total_iters)
+        #             log.diff_summary("val/output3_diff", disp_crop_L[0:1], vis['output3'][0:1])
 
-            log.scalar_summary('val/loss', total_val_loss / len(ValImgLoader), 1)
+        #     log.scalar_summary('val/loss', total_val_loss / len(ValImgLoader), 1)
 
         ## training ##
         for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(TrainImgLoader):
@@ -300,9 +300,6 @@ def main():
                 }, savefilename)
 
         log.scalar_summary('train/loss', total_train_loss / len(TrainImgLoader), epoch)
-
-        
-
         torch.cuda.empty_cache()
 
 
