@@ -33,7 +33,7 @@ def convert_to_colormap(x):
     return lab
 
 def get_diffs(gt, pred):
-    gt_invalid = np.logical_or(gt == np.inf, gt == np.NINF)
+    gt_invalid = np.logical_or(gt == np.inf, gt == 0)
 
     diff = gt - pred
 

@@ -11,6 +11,7 @@ import wandb
 from torch.autograd import Variable
 import numpy as np
 import scipy.misc
+from utils import disp_converter
 import os
 try:
     from StringIO import StringIO  # Python 2.7
@@ -41,13 +42,29 @@ class WandbLogger(object):
         # summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
         # self.writer.add_summary(summary, step)
 
-    def image_summary(self, tag, images, step, caption=None):
-        if caption == None:
-            wandb.log({tag: wandb.Image(images)}, step=step)
-        else:
-            wandb.log({tag: wandb.Image(images, caption=caption)}, step=step)
-        """Log a list of images."""
+    def image_summary(self, tag, img, step, caption=None):
+        """Log an image."""
+        img = self.to_jpg(img)
 
+        color = disp_converter.convert_to_colormap(img)
+
+        data = {tag: wandb.Image(img, caption=caption), tag+"_color": wandb.Image(color, caption=caption)}
+
+        wandb.log(data,  step=step)
+
+    def diff_summary(self, tag, gt, pred, step, caption=None):
+        gt = self.to_jpg(gt)
+        pred = self.to_jpg(self)
+
+        diff, false_negative_map, false_positive_map = disp_converter.get_diffs(gt, pred)
+
+        self.image_summary(tag, diff, step, caption=caption)
+        self.image_summary(tag + "_false_negative", false_negative_map, step, caption=caption)
+        self.image_summary(tag + "_false_positive", false_positive_map, step, caption=caption)
+
+    def to_jpg(self, x):
+        x = self.to_np(x)
+        return (x*256).astype("uint16")
 
     def histo_summary(self, tag, values, step, bins=1000):
         """Log a histogram of the tensor of values."""

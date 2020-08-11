@@ -144,7 +144,7 @@ def main():
     for epoch in range(1, args.epochs+1):
         total_train_loss = 0
         adjust_learning_rate(optimizer,epoch)
-        
+
         ## training ##
         for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(TrainImgLoader):
             start_time = time.time() 

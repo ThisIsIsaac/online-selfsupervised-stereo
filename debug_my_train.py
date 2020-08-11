@@ -18,7 +18,7 @@ from sync_batchnorm.sync_batchnorm import convert_model
 from utils import get_metrics
 from collections import Counter
 
-torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.benchmark = False
 
 parser = argparse.ArgumentParser(description='HSM-Net')
 parser.add_argument('--maxdisp', type=int, default=384,
@@ -174,37 +174,38 @@ def train(imgL, imgR, disp_L):
     return lossvalue, vis
 
 def validate(imgL, imgR, disp_L):
+    optimizer.zero_grad()
     model.eval()
 
-    with torch.no_grad():
-        imgL = torch.FloatTensor(imgL)
-        imgR = torch.FloatTensor(imgR)
-        disp_L = torch.FloatTensor(disp_L)
+    # with torch.no_grad():
+    imgL = torch.FloatTensor(imgL)
+    imgR = torch.FloatTensor(imgR)
+    disp_L = torch.FloatTensor(disp_L)
 
-        imgL, imgR, disp_true = imgL.cuda(), imgR.cuda(), disp_L.cuda()
+    imgL, imgR, disp_true = imgL.cuda(), imgR.cuda(), disp_L.cuda()
 
-        # ---------
-        mask = (disp_true > 0) & (disp_true < args.maxdisp)
-        mask.detach_()
-        # ----
+    # ---------
+    mask = (disp_true > 0) & (disp_true < args.maxdisp)
+    mask.detach_()
+    # ----
 
-        stacked, entropy = model(imgL, imgR)
-        loss = (64. / 85) * F.smooth_l1_loss(stacked[0][mask], disp_true[mask], size_average=True) + \
-            (16. / 85) * F.smooth_l1_loss(stacked[1][mask], disp_true[mask], size_average=True) + \
-            (4. / 85) * F.smooth_l1_loss(stacked[2][mask], disp_true[mask], size_average=True) + \
-            (1. / 85) * F.smooth_l1_loss(stacked[3][mask], disp_true[mask], size_average=True)
+    stacked, entropy = model(imgL, imgR)
+    loss = (64. / 85) * F.smooth_l1_loss(stacked[0][mask], disp_true[mask], size_average=True) + \
+        (16. / 85) * F.smooth_l1_loss(stacked[1][mask], disp_true[mask], size_average=True) + \
+        (4. / 85) * F.smooth_l1_loss(stacked[2][mask], disp_true[mask], size_average=True) + \
+        (1. / 85) * F.smooth_l1_loss(stacked[3][mask], disp_true[mask], size_average=True)
 
-        vis = {}
-        vis['output3'] = stacked[0].detach().cpu().numpy()
-        vis['output4'] = stacked[1].detach().cpu().numpy()
-        vis['output5'] = stacked[2].detach().cpu().numpy()
-        vis['output6'] = stacked[3].detach().cpu().numpy()
-        vis['entropy'] = entropy.detach().cpu().numpy()
-        lossvalue = loss.data
+    vis = {}
+    vis['output3'] = stacked[0].detach().cpu().numpy()
+    vis['output4'] = stacked[1].detach().cpu().numpy()
+    vis['output5'] = stacked[2].detach().cpu().numpy()
+    vis['output6'] = stacked[3].detach().cpu().numpy()
+    vis['entropy'] = entropy.detach().cpu().numpy()
+    lossvalue = loss.data
 
-        del stacked
-        del loss
-        return lossvalue, vis
+    del stacked
+    del loss
+    return lossvalue, vis
 
 
 def adjust_learning_rate(optimizer, epoch):
