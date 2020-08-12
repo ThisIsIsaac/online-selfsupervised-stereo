@@ -29,7 +29,7 @@ parser.add_argument('--database', default='/DATA1/isaac',
                     help='data path')
 parser.add_argument('--epochs', type=int, default=10,
                     help='number of epochs to train')
-parser.add_argument('--batchsize', type=int, default=28,
+parser.add_argument('--batchsize', type=int, default=22, # when maxdisp is 768, 22 is the most you can fit in 2 V100s
                     help='samples per batch')
 parser.add_argument('--loadmodel', default=None,
                     help='weights path')
@@ -126,7 +126,7 @@ val_loader_eth3d = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=
 
 # * Gengshan told me to double the loader_kitti15's proportion by multiplying 2
 data_inuse = torch.utils.data.ConcatDataset(
-    [loader_carla] * 40 + [loader_mb] * 500 + [loader_scene] + [loader_kitti15] * 8 + [loader_kitti12] * 80 + [
+    [loader_carla] * 40 + [loader_mb] * 500 + [loader_scene] + [loader_kitti15] * 2 + [loader_kitti12] * 80 + [
         loader_eth3d] * 1000)
 
 data_val = torch.utils.data.ConcatDataset([val_loader_carla, val_loader_eth3d, val_loader_kitti12, val_loader_kitti15, val_loader_mb, val_loader_scene])
@@ -210,7 +210,7 @@ def validate(imgL, imgR, disp_L):
 
 def adjust_learning_rate(optimizer, epoch):
     # * ratio of lr to batchsize is 0.01:28 
-    lr = 0.01 * (args.batchsize / 28)
+    lr = 1e-3 * (args.batchsize / 28)
     if epoch > args.epochs - 1:
         lr = lr / 10
 
