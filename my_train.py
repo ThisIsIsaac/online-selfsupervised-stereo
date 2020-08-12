@@ -61,8 +61,9 @@ if args.loadmodel is not None:
 
 print('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
 
-
-optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999))
+# initial lr will be set in "adjust_learning_rate" function. this is just a dummy variable for init
+dummy_lr = 0.1
+optimizer = optim.Adam(model.parameters(), lr=dummy_lr, betas=(0.9, 0.999))
 
 
 def _init_fn(worker_id):
