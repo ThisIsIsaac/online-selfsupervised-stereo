@@ -13,7 +13,8 @@ import time
 from models.submodule import *
 from utils.eval import mkdir_p, save_pfm
 from utils.preprocess import get_transform
-
+from dataloader import KITTIloader2015 as lk15
+import subprocess
 # cudnn.benchmark = True
 cudnn.benchmark = False
 import wandb
@@ -23,8 +24,7 @@ parser.add_argument('--datapath', default='./data-mbtest/',
                     help='test data path')
 parser.add_argument('--loadmodel', default=None,
                     help='model path')
-parser.add_argument('--outdir', default='output',
-                    help='output dir')
+parser.add_argument('--name', type=str, required=True)
 parser.add_argument('--clean', type=float, default=-1,
                     help='clean up output using entropy estimation')
 parser.add_argument('--testres', type=float, default=0.5,  # Too low for images. Sometimes turn it to 2 ~ 3
@@ -33,7 +33,7 @@ parser.add_argument('--testres', type=float, default=0.5,  # Too low for images.
                     # middleburry 1 (3000, 3000)
                     # ETH (3~4) since (1000, 1000)
                     help='test time resolution ratio 0-x')
-parser.add_argument('--max_disp', type=float, default=-1,
+parser.add_argument('--max_disp', type=float, default=384,
                     help='maximum disparity to search for')
 parser.add_argument('--level', type=int, default=1,
                     help='output level of output, default is level 1 (stage 3),\
@@ -45,12 +45,12 @@ wandb_logger = wandb.init(name="submission.py", project="rvc_stereo", save_code=
 # dataloader
 from dataloader import listfiles as DA
 
-test_left_img, test_right_img, _, _ = DA.dataloader(args.datapath)
-print("total test images: " + str(len(test_left_img)))
-print("output path: " + args.outdir)
+# test_left_img, test_right_img, _, _ = DA.dataloader(args.datapath)
+# print("total test images: " + str(len(test_left_img)))
+# print("output path: " + args.outdir)
 
 # construct model
-model = hsm(128, args.clean, level=args.level)
+model = hsm(args.max_disp, args.clean, level=args.level)
 model = nn.DataParallel(model, device_ids=[0])
 model.cuda()
 
@@ -72,14 +72,26 @@ with torch.no_grad():
     model.eval()
     pred_disp, entropy = model(imgL, imgR)
 
+_, _, _, left_val, right_val, disp_val_L = lk15.dataloader('/DATA1/isaac/KITTI2015/data_scene_flow/training/',
+                                                                      val=True)
 
 def main():
     processed = get_transform()
     model.eval()
-    for inx in range(len(test_left_img)):
-        print(test_left_img[inx])
-        imgL_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/Kitti2015_000028_10/im0.png').astype('float32'))[:, :, :3]
-        imgR_o = (skimage.io.imread('/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training/Kitti2015_000028_10/im1.png').astype('float32'))[:, :, :3]
+
+    # save predictions
+    out_path = os.path.join("./kitti_submission_output", args.name)
+    if not os.path.exists(out_path):
+        os.mkdir(out_path)
+    out_dir = os.path.join(out_path, "disp_0")
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+
+    for (left_img_path, right_img_path, disp_path) in zip(left_val, right_val, disp_val_L):
+        # print(test_left_img[inx])
+        print(left_img_path)
+        imgL_o = (skimage.io.imread(left_img_path).astype('float32'))[:, :, :3]
+        imgR_o = (skimage.io.imread(right_img_path).astype('float32'))[:, :, :3]
         imgsize = imgL_o.shape[:2]
         # torch.save(imgL_o, "/home/isaac/high-res-stereo/debug/my_submission/img0.pt")
 
@@ -101,7 +113,6 @@ def main():
         model.module.disp_reg16 = disparityregression(model.module.maxdisp, 16).cuda()
         model.module.disp_reg32 = disparityregression(model.module.maxdisp, 32).cuda()
         model.module.disp_reg64 = disparityregression(model.module.maxdisp, 64).cuda()
-        print(model.module.maxdisp)
 
         # resize
         imgL_o = cv2.resize(imgL_o, None, fx=args.testres, fy=args.testres, interpolation=cv2.INTER_CUBIC)
@@ -144,8 +155,7 @@ def main():
             pred_disp, entropy = model(imgL, imgR)
             torch.cuda.synchronize()
             ttime = (time.time() - start_time)
-            torch.save(pred_disp, "/home/isaac/high-res-stereo/debug/my_submission/out.pt")
-            print('time = %.2f' % (ttime * 1000))
+
         pred_disp = torch.squeeze(pred_disp).data.cpu().numpy()
 
         top_pad = max_h - imgL_o.shape[0]
@@ -153,11 +163,7 @@ def main():
         entropy = entropy[top_pad:, :pred_disp.shape[1] - left_pad].cpu().numpy()
         pred_disp = pred_disp[top_pad:, :pred_disp.shape[1] - left_pad]
 
-        # save predictions
-        idxname = test_left_img[inx].split('/')[-2]
-        if not os.path.exists('%s/%s' % (args.outdir, idxname)):
-            os.makedirs('%s/%s' % (args.outdir, idxname))
-        idxname = '%s/disp0HSM' % (idxname)
+        img_name = os.path.basename(os.path.normpath(left_img_path))
 
         # resize to highres
         pred_disp = cv2.resize(pred_disp / args.testres, (imgsize[1], imgsize[0]), interpolation=cv2.INTER_LINEAR)
@@ -166,22 +172,24 @@ def main():
         invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
         pred_disp[invalid] = np.inf
 
-        np.save('%s/%s-disp.npy' % (args.outdir, idxname.split('/')[0]), (pred_disp))
-        np.save('%s/%s-ent.npy' % (args.outdir, idxname.split('/')[0]), (entropy))
-        pred_disp_png = pred_disp / pred_disp[~invalid].max() * 255
-        cv2.imwrite('%s/%s-disp.png' % (args.outdir, idxname.split('/')[0]), pred_disp_png)
-        entropy_png = entropy / entropy.max() * 255
-        cv2.imwrite('%s/%s-ent.png' % (args.outdir, idxname.split('/')[0]), entropy_png)
+        # np.save('%s/%s' % (out_dir, img_name), (pred_disp))
+        # np.save('%s/%s-ent.npy' % (out_dir, idxname.split('/')[0]), (entropy))
+        pred_disp_png = (pred_disp * 256).astype('uint16')
+        cv2.imwrite(os.path.join(out_dir, img_name), pred_disp_png)
+        entropy_png = (entropy * 256).astype('uint16')
+        # cv2.imwrite(os.path.join(out_dir, img_name), entropy_png)
 
         wandb.log({"disp": wandb.Image(pred_disp_png, caption=str(pred_disp_png.shape)),
                    "entropy": wandb.Image(entropy_png, caption=str(entropy_png.shape))})
 
-        with open('%s/%s.pfm' % (args.outdir, idxname), 'w') as f:
-            save_pfm(f, pred_disp[::-1, :])
-        with open('%s/%s/timeHSM.txt' % (args.outdir, idxname.split('/')[0]), 'w') as f:
-            f.write(str(ttime))
+        # with open('%s/%s.pfm' % (out_dir, idxname), 'w') as f:
+        #     save_pfm(f, pred_disp[::-1, :])
+        # with open('%s/%s/timeHSM.txt' % (out_dir, idxname.split('/')[0]), 'w') as f:
+        #     f.write(str(ttime))
 
         torch.cuda.empty_cache()
+        
+    subprocess.run(["/home/isaac/KITTI2015_devkit/cpp/eval_scene_flow", out_path+"/"])
 
 
 if __name__ == '__main__':

@@ -3,7 +3,7 @@ from os import mkdir
 from shutil import copyfile
 import time
 
-def prepare_kitti(in_path, obj_path, out_path):
+def prepare_kitti(in_path, out_path):
     # if not (os.path.isabs(in_path) and os.path.isabs(out_path) and os.path.isabs(obj_path)):
     #     raise ValueError("in_path, obj_path, out_path must be absolute paths")
 
@@ -63,4 +63,4 @@ if __name__ == "__main__":
     # obj_path = "/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training"
     obj_path = None
     out_path = "/home/isaac/high-res-stereo/kitti_submission_output"
-    prepare_kitti(in_path,obj_path,  out_path)
+    prepare_kitti(in_path,  out_path)

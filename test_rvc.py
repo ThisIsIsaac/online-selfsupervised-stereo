@@ -16,6 +16,7 @@ from sync_batchnorm.sync_batchnorm import convert_model
 from utils.prepare_submission import prepare_kitti
 import subprocess
 from dataloader import KITTIloader2015 as lk15
+from dataloader import MiddleburyLoader as DA
 # source: `rvc_devkit/stereo/util_stereo.py`
 # Returns a dict which maps the parameters to their values. The values (right
 # side of the equal sign) are all returned as strings (and not parsed).
@@ -91,13 +92,12 @@ def main():
     if not args.prepare_kitti:
         dataset = RVCDataset(args)
     if args.prepare_kitti:
-        _, _, _, left_val, right_val, disp_val_L = lk15.dataloader('%s/KITTI2015/data_scene_flow/training/' % args.database,
-                                                                      val=args.val)  # change to trainval when finetuning on KITTI
+        _, _, _, left_val, right_val, disp_val_L = lk15.dataloader('/DATA1/isaac/KITTI2015/data_scene_flow/training/',
+                                                                      val=True)  # change to trainval when finetuning on KITTI
 
-        dataset = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=[1.8, 1.8],
-                                        order=0)
+        dataset = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=[1,1], order=0)
         
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+    dataloader = DataLoader(dataset, batch_size=9, shuffle=False, num_workers=0)
         
     steps = 0
     for (imgL, imgR, gt_disp_raw, max_disp, origianl_image_size, top_pad, left_pad, testres, dataset_type , data_path) in dataloader:
@@ -276,10 +276,9 @@ def main():
         wandb.save(args.loadmodel)
 
     if args.prepare_kitti and (args.all_data or args.kitti):
-        in_path = 'output/%s/%s' % (args.name)
-        obj_path = "/home/isaac/rvc_devkit/stereo/datasets_middlebury2014/training"
+        in_path = 'output/%s' % (args.name)
         out_path = "/home/isaac/high-res-stereo/kitti_submission_output"
-        out_path = prepare_kitti(in_path, obj_path,  out_path)
+        out_path = prepare_kitti(in_path,  out_path)
         subprocess.run(["/home/isaac/KITTI2015_devkit/cpp/eval_scene_flow", out_path])
         print("KITTI submission evaluation saved to: " + out_path)
 if __name__ == '__main__':
