@@ -29,7 +29,7 @@ parser.add_argument('--database', default='/DATA1/isaac',
                     help='data path')
 parser.add_argument('--epochs', type=int, default=10,
                     help='number of epochs to train')
-parser.add_argument('--batchsize', type=int, default=22, # when maxdisp is 768, 22 is the most you can fit in 2 V100s
+parser.add_argument('--batchsize', type=int, default=18, # when maxdisp is 768, 18 is the most you can fit in 2 V100s (with syncBN on)
                     help='samples per batch')
 parser.add_argument('--loadmodel', default=None,
                     help='weights path')
