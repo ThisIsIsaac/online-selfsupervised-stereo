@@ -61,7 +61,8 @@ if args.loadmodel is not None:
 
 print('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
 
-optimizer = optim.Adam(model.parameters(), lr=0.1, betas=(0.9, 0.999))
+
+optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999))
 
 
 def _init_fn(worker_id):
@@ -83,7 +84,6 @@ scale_factor = args.maxdisp / 384.  # controls training resolution
 
 # * Gengshan told me to set the scale s.t. the mean of the scale would be same as testres (kitti = 1.8, eth = 3.5 (?) , MB = 1)
 kitti_scale_range = [1.4 , 2.2]  # ? multiply scale_factor or not? Since default maxdisp is 384, scale_factor is 1 by default. (Asked gengshan via FB messenger)
-eth_scale_range = [2.7, 4.2 * scale_factor]
 
 all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val, disp_val_L, disp_val_R = ls.hr_dataloader('%s/HR-VS/trainingF' % args.database, val=args.val)
 loader_carla = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
@@ -208,11 +208,11 @@ def validate(imgL, imgR, disp_L):
 
 
 def adjust_learning_rate(optimizer, epoch):
-    if epoch <= args.epochs - 1:
-        lr = 1e-3
-    else:
-        lr = 1e-4
-    print(lr)
+    # * ratio of lr to batchsize is 0.01:28 
+    lr = 0.01 * (args.batch_size / 28)
+    if epoch > args.epochs - 1:
+        lr = lr / 10
+
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
