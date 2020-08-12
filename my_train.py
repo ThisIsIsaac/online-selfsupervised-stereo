@@ -210,7 +210,7 @@ def validate(imgL, imgR, disp_L):
 
 def adjust_learning_rate(optimizer, epoch):
     # * ratio of lr to batchsize is 0.01:28 
-    lr = 0.01 * (args.batch_size / 28)
+    lr = 0.01 * (args.batchsize / 28)
     if epoch > args.epochs - 1:
         lr = lr / 10
 
