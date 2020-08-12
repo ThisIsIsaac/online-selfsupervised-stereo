@@ -82,7 +82,7 @@ batch_size = args.batchsize
 scale_factor = args.maxdisp / 384.  # controls training resolution
 
 # * Gengshan told me to set the scale s.t. the mean of the scale would be same as testres (kitti = 1.8, eth = 3.5 (?) , MB = 1)
-kitti_scale_range = [1.4 , 2.2 * scale_factor]  # ? multiply scale_factor or not? Since default maxdisp is 384, scale_factor is 1 by default. (Asked gengshan via FB messenger)
+kitti_scale_range = [1.4 , 2.2]  # ? multiply scale_factor or not? Since default maxdisp is 384, scale_factor is 1 by default. (Asked gengshan via FB messenger)
 eth_scale_range = [2.7, 4.2 * scale_factor]
 
 all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val, disp_val_L, disp_val_R = ls.hr_dataloader('%s/HR-VS/trainingF' % args.database, val=args.val)
