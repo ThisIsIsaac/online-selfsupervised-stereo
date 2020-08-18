@@ -29,3 +29,5 @@ train_output
 kitti_submission_output
 .vscode
 sync_batchnorm
+mb_submission_output
+eth_submission_output

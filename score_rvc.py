@@ -1,7 +1,6 @@
 import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
-from utils.readpfm import readPFM
 import cv2
 import skimage.io
 import os
