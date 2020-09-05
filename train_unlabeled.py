@@ -18,6 +18,31 @@ from sync_batchnorm.sync_batchnorm import convert_model
 from utils import get_metrics
 from collections import Counter
 
+
+def unlabeled_loader():
+    disp_dir = "/home/isaac/high-res-stereo/unlabeled_util/pseudo_gt/disp/"
+    entropy_dir = "/home/isaac/high-res-stereo/unlabeled_util/pseudo_gt/entropy/"
+
+    disp_paths = []
+    entropy_paths = []
+
+    for img in os.listdir(disp_dir):
+        disp_paths.append(os.path.join(disp_dir, img))
+        entropy_paths.append(os.path.join(entropy_dir, img))
+
+    left_img_paths = []
+    right_img_paths = []
+    with open("./unlabeled_util/exp_train_set.txt", "r") as file:
+        lines = file.readlines()
+        for line in lines:
+            line = line[:len(line)-1]
+            line = os.path.join("/DATA1/isaac", line)
+            left_img_paths.append(line)
+            right_img_paths.append(line.replace("/image_02/", "/image_03/"))
+
+    return left_img_paths, right_img_paths, disp_paths, entropy_paths
+
+
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser(description='HSM-Net')
@@ -86,56 +111,18 @@ scale_factor = args.maxdisp / 384.  # controls training resolution
 # * Gengshan told me to set the scale s.t. the mean of the scale would be same as testres (kitti = 1.8, eth = 3.5 (?) , MB = 1)
 kitti_scale_range = [1.4 , 2.2]  # ? multiply scale_factor or not? Since default maxdisp is 384, scale_factor is 1 by default. (Asked gengshan via FB messenger)
 
-all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val, disp_val_L, disp_val_R = ls.hr_dataloader('%s/HR-VS/trainingF' % args.database, val=args.val)
-loader_carla = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
-                                rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=2)
+all_left_img, all_right_img, all_left_disp, all_left_entropy = unlabeled_loader()
 
-val_loader_carla = DA.myImageFloder(left_val, right_val, disp_val_L, right_disparity=disp_val_R,
-                                rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=2)
 
-all_left_img, all_right_img, all_left_disp, all_right_disp, left_val, right_val, disp_val_L, disp_val_R = ls.mb_dataloader(
-    '%s/Middlebury/mb-ex-training/trainingF' % args.database, val=args.val)  # mb-ex
-loader_mb = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
-                             rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=0)
-val_loader_mb = DA.myImageFloder(left_val, right_val, disp_val_L, right_disparity=disp_val_R,
-                             rand_scale=[0.225, 0.6 * scale_factor], rand_bright=[0.8, 1.2], order=0)
+loader = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, left_entropy=all_left_entropy, rand_scale=kitti_scale_range,
+                                  order=0, entropy_threshold=0.8) # or 0.95
 
-all_left_img, all_right_img, all_left_disp, all_right_disp, val_left_img, val_right_img, val_left_disp, val_right_disp = lt.scene_dataloader('%s/SceneFlow/' % args.database, val=args.val)
-loader_scene = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, right_disparity=all_right_disp,
-                                rand_scale=[0.9, 2.4 * scale_factor], order=2)
-val_loader_scene = DA.myImageFloder(val_left_img, val_right_img, val_left_disp, right_disparity=val_right_disp,
-                                rand_scale=[0.9, 2.4 * scale_factor], order=2)
-
-all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader('%s/KITTI2015/data_scene_flow/training/' % args.database,
-                                                                      val=args.val)  # change to trainval when finetuning on KITTI
-loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=kitti_scale_range,
-                                  order=0)
-val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=kitti_scale_range,
-                                  order=0)
-
-all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk12.dataloader('%s/KITTI2012/data_stereo_flow/training/' % args.database, val=args.val)
-loader_kitti12 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=kitti_scale_range,
-                                  order=0)
-val_loader_kitti12 = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=kitti_scale_range,
-                                  order=0)
-
-# ! Gengshan didn't tell me to change ETH explicitly, just change kitti. Although he didn't mention explicitly, it may be better to chagne ETH as well, so will go a head
-all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = ls.eth_dataloader('%s/ETH3D/low-res-stereo/train/' % args.database, val=args.val)
-loader_eth3d = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=kitti_scale_range, order=0)
-val_loader_eth3d = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=kitti_scale_range, order=0)
-
-# * Gengshan told me to double the loader_kitti15's proportion by multiplying 2
-data_inuse = torch.utils.data.ConcatDataset(
-    [loader_carla] * 40 + [loader_mb] * 500 + [loader_scene] + [loader_kitti15] * 2 + [loader_kitti12] * 80 + [
-        loader_eth3d] * 1000)
-
-data_val = torch.utils.data.ConcatDataset([val_loader_carla, val_loader_eth3d, val_loader_kitti12, val_loader_kitti15, val_loader_mb, val_loader_scene])
 
 TrainImgLoader = torch.utils.data.DataLoader(
-    data_inuse,
+    loader,
     batch_size=batch_size, shuffle=True, num_workers=batch_size, drop_last=True, worker_init_fn=_init_fn)
 
-print('%d batches per epoch' % (len(data_inuse) // batch_size))
+print('%d batches per epoch' % (len(loader) // batch_size))
 
 
 def train(imgL, imgR, disp_L):

@@ -8,6 +8,7 @@ import pdb
 import torchvision
 import warnings
 warnings.filterwarnings('ignore', '.*output shape of zoom.*')
+import cv2 
 
 IMG_EXTENSIONS = [
  '.jpg', '.JPG', '.jpeg', '.JPEG',
@@ -32,7 +33,7 @@ def disparity_loader(path):
 
 class myImageFloder(data.Dataset):
 
-    def __init__(self, left, right, left_disparity, right_disparity=None, loader=default_loader, dploader=disparity_loader, rand_scale=[0.225,0.6], rand_bright=[0.5,2.], order=0):
+    def __init__(self, left, right, left_disparity, right_disparity=None, left_entropy=None, loader=default_loader, dploader=disparity_loader, rand_scale=[0.225,0.6], rand_bright=[0.5,2.], order=0, entropy_threshold=None):
         self.left = left
         self.right = right
         self.disp_L = left_disparity
@@ -42,7 +43,8 @@ class myImageFloder(data.Dataset):
         self.rand_scale = rand_scale
         self.rand_bright = rand_bright
         self.order = order
-        
+        self.left_entropy = left_entropy
+        self.entropy_threshold = entropy_threshold
 
     def __getitem__(self, index):
         left = self.left[index]
@@ -52,6 +54,12 @@ class myImageFloder(data.Dataset):
         disp_L = self.disp_L[index]
         dataL = self.dploader(disp_L)
         dataL[dataL == np.inf] = 0
+        
+        if self.left_entropy is not None:
+            entropy = self.dploader(self.left_entropy[index])
+            entropy = cv2.resize(entropy, ( dataL.shape[1], dataL.shape[0]), interpolation=cv2.INTER_LINEAR)
+            mask = [entropy < self.entropy_threshold]
+            dataL[mask] = 0
         
         if not (self.disp_R is None):
             disp_R = self.disp_R[index]
