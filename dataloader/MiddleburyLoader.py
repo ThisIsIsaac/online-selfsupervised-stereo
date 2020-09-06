@@ -27,7 +27,7 @@ def disparity_loader(path):
         data = Image.open(path)
         data = np.ascontiguousarray(data,dtype=np.float32)/256
         return data
-    else:    
+    else:
         return rp.readPFM(path)[0]
 
 
@@ -47,7 +47,7 @@ class myImageFloder(data.Dataset):
         self.entropy_threshold = entropy_threshold
 
     def __getitem__(self, index):
-        
+
         left = self.left[index]
         right = self.right[index]
         left_img = self.loader(left)
@@ -55,13 +55,13 @@ class myImageFloder(data.Dataset):
         disp_L = self.disp_L[index]
         dataL = self.dploader(disp_L)
         dataL[dataL == np.inf] = 0
-        
+
         if self.left_entropy is not None:
             entropy = self.dploader(self.left_entropy[index])
             entropy = cv2.resize(entropy, ( dataL.shape[1], dataL.shape[0]), interpolation=cv2.INTER_LINEAR)
-            mask = [entropy < self.entropy_threshold]
+            mask = [entropy > self.entropy_threshold]
             dataL[mask] = 0
-        
+
         if not (self.disp_R is None):
             disp_R = self.disp_R[index]
             dataR = self.dploader(disp_R)

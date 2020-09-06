@@ -123,7 +123,7 @@ loader = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, left_entro
 
 TrainImgLoader = torch.utils.data.DataLoader(
     loader,
-    batch_size=batch_size, shuffle=False, num_workers=1, drop_last=True, worker_init_fn=_init_fn)
+    batch_size=batch_size, shuffle=False, num_workers=batch_size, drop_last=True, worker_init_fn=_init_fn)
 
 print('%d batches per epoch' % (len(loader) // batch_size))
 
