@@ -6,7 +6,6 @@ KITTI_raw/2011_09_26/2011_09_26_drive_0059_sync/image_02/data/0000000350.png
 KITTI_raw/2011_09_26/2011_09_26_drive_0022_sync/image_02/data/0000000051.png
 KITTI_raw/2011_10_03/2011_10_03_drive_0027_sync/image_02/data/0000001355.png
 KITTI_raw/2011_09_26/2011_09_26_drive_0023_sync/image_02/data/0000000130.png
-KITTI_raw/2011_10_03/2011_10_03_drive_0034_sync/image_02/data/0000000629.png
 KITTI_raw/2011_09_30/2011_09_30_drive_0020_sync/image_02/data/0000000731.png
 KITTI_raw/2011_09_30/2011_09_30_drive_0033_sync/image_02/data/0000001272.png
 KITTI_raw/2011_09_30/2011_09_30_drive_0020_sync/image_02/data/0000000494.png

@@ -47,6 +47,7 @@ class myImageFloder(data.Dataset):
         self.entropy_threshold = entropy_threshold
 
     def __getitem__(self, index):
+        
         left = self.left[index]
         right = self.right[index]
         left_img = self.loader(left)
@@ -121,13 +122,20 @@ class myImageFloder(data.Dataset):
         left_img = np.lib.pad(left_img, ((top_pad, 0), (0, left_pad),(0,0)), mode='constant', constant_values=0)
         right_img = np.lib.pad(right_img, ((top_pad, 0), (0, left_pad),(0,0)), mode='constant', constant_values=0)
 
+        disp_top_pad = max_h - dataL.shape[0]
+        disp_left_pad = max_w - dataL.shape[1]
         dataL = np.expand_dims(np.expand_dims(dataL, 0), 0)
-        dataL = np.lib.pad(dataL, ((0, 0), (0, 0), (top_pad, 0), (0, left_pad)), mode='constant', constant_values=0)[0,0]
+        dataL = np.lib.pad(dataL, ((0, 0), (0, 0), (disp_top_pad, 0), (0, disp_left_pad)), mode='constant', constant_values=0)[0,0]
         dataL = np.ascontiguousarray(dataL, dtype=np.float32)
 
         processed = preprocess.get_transform()
         left_img = processed(left_img)
         right_img = processed(right_img)
+        
+        print(self.left[index])
+        print("  left: " + str(left_img.shape))
+        print("  right: " + str(right_img.shape))
+        print("  disp shape: " + str(dataL.shape))
         return (left_img, right_img, dataL)
 
     def __len__(self):
