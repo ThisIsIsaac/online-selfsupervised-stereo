@@ -32,16 +32,18 @@ def unlabeled_loader():
 
     left_img_paths = []
     right_img_paths = []
-    with open("./unlabeled_util/exp_train_set.txt", "r") as file:
-        lines = file.readlines()
-        for line in lines:
-            line = line[:len(line)-1]
-            line = os.path.join("/DATA1/isaac", line)
-            left_img_paths.append(line)
-            right_img_paths.append(line.replace("/image_02/", "/image_03/"))
+
+    for file in disp_paths:
+        name = file.split("/")[-1]
+        name = name.replace("-", "/")
+        name = os.path.join("/DATA1/isaac/KITTI_raw/", name)
+        left_img_paths.append(name)
+        right_img_paths.append(name.replace("/image_02/", "/image_03/"))
 
     return left_img_paths, right_img_paths, disp_paths, entropy_paths
 
+
+torch.backends.cudnn.benchmark = True
 
 torch.backends.cudnn.benchmark = True
 
