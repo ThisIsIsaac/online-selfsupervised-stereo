@@ -222,6 +222,11 @@ def main():
             total_train_loss += loss
 
             if total_iters % 10 == 0:
+                # result = subprocess.run(["/home/isaac/KITTI2015_devkit/cpp/eval_stereo_flow", 
+                #                          out_path+"/"], stdout=subprocess.PIPE)
+                
+                # print(result.stdout)
+
                 log.scalar_summary('train/loss_batch', loss, total_iters)
 
             if total_iters % 100 == 0:

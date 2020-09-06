@@ -188,8 +188,9 @@ def main():
         #     f.write(str(ttime))
 
         torch.cuda.empty_cache()
-        
+
     subprocess.run(["/home/isaac/KITTI2015_devkit/cpp/eval_scene_flow", out_path+"/"])
+
 
 
 if __name__ == '__main__':
