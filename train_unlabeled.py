@@ -65,6 +65,7 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--val_epoch', type=int, default=1)
 parser.add_argument("--sync_bn", action="store_true", default=False)
 parser.add_argument("--val", action="store_true", default=False)
+parser.add_argument('--threshold', type=float, default=None, help='entropy threshold')
 
 args = parser.parse_args()
 torch.manual_seed(args.seed)
@@ -115,7 +116,7 @@ all_left_img, all_right_img, all_left_disp, all_left_entropy = unlabeled_loader(
 
 
 loader = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, left_entropy=all_left_entropy, rand_scale=kitti_scale_range,
-                                  order=0, entropy_threshold=0.8) # or 0.95
+                                  order=0, entropy_threshold=args.threshold) # or 0.95
 
 
 TrainImgLoader = torch.utils.data.DataLoader(

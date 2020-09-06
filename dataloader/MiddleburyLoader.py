@@ -132,10 +132,6 @@ class myImageFloder(data.Dataset):
         left_img = processed(left_img)
         right_img = processed(right_img)
         
-        print(self.left[index])
-        print("  left: " + str(left_img.shape))
-        print("  right: " + str(right_img.shape))
-        print("  disp shape: " + str(dataL.shape))
         return (left_img, right_img, dataL)
 
     def __len__(self):
