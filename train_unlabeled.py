@@ -225,7 +225,7 @@ def main():
                 log.scalar_summary('train/loss_batch', loss, total_iters)
 
             if total_iters % 100 == 0:
-
+                
                 log.image_summary('train/left', imgL_crop[0:1], total_iters)
                 log.image_summary('train/right', imgR_crop[0:1], total_iters)
                 log.image_summary('train/gt0', disp_crop_L[0:1], total_iters, get_color=True) # <-- GT disp
