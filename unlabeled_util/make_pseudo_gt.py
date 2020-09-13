@@ -92,12 +92,12 @@ def main():
     model.eval()
 
     # save predictions
-    # out_path = os.path.join("./unlabeled_util/pseudo_gt/disp", args.name)
-    # if not os.path.exists(out_path):
-    #     os.mkdir(out_path)
-    # out_dir = os.path.join(out_path, "disp_0")
-    # if not os.path.exists(out_dir):
-    #     os.mkdir(out_dir)
+    out_path = "./unlabeled_util/pseudo_gt/disp"
+    if not os.path.exists(out_path):
+        os.mkdir(out_path)
+
+    if not os.path.exists("./unlabeled_util/pseudo_gt/entropy"):
+        os.mkdir("./unlabeled_util/pseudo_gt/entropy")
     left_img_paths = left_img_paths[3038:]
     right_img_paths = right_img_paths[3038:]
     
@@ -192,9 +192,6 @@ def main():
     with open("exp_error_imgs.txt", "w") as file:
         for path in missing_right_imgs:
             file.write(path + "\n")
-
-    # subprocess.run(["/home/isaac/KITTI2015_devkit/cpp/eval_scene_flow", out_path+"/"])
-
 
 if __name__ == '__main__':
     main()

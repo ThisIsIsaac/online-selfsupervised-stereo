@@ -32,3 +32,4 @@ mb_submission_output
 eth_submission_output
 kitti_submission_output
 unlabeled_util/pseudo_gt
+unlabeled_util/bad_pseudo_gt
