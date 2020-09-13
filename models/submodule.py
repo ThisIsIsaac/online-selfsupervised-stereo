@@ -71,7 +71,7 @@ class disparityregression(nn.Module):
         self.register_buffer('disp',torch.Tensor(np.reshape(np.array(range(maxdisp)),[1,maxdisp,1,1])))
         self.divisor = divisor
 
-    def forward(self, x,ifent=False):
+    def forward(self, x,ifent=True):
         disp = self.disp.repeat(x.size()[0],1,x.size()[2],x.size()[3])
         out = torch.sum(x*disp,1) * self.divisor
 
