@@ -1,6 +1,3 @@
-import sys
-sys.path.append("/home/isaac/high-res-stereo")
-
 import argparse
 import cv2
 from models import hsm
@@ -73,9 +70,6 @@ def main():
     with torch.no_grad():
         model.eval()
         pred_disp, entropy = model(imgL, imgR)
-
-    # _, _, _, left_val, right_val, disp_val_L = lk15.dataloader('/DATA1/isaac/KITTI2015/data_scene_flow/training/',
-    #                                                                       val=True)
 
     left_img_paths = []
     right_img_paths = []
