@@ -43,7 +43,7 @@ def main():
                         help='output level of output, default is level 1 (stage 3),\
                             can also use level 2 (stage 2) or level 3 (stage 1)')
     args = parser.parse_args()
-    args.max_disp = int(args.max_disp*args.testres) # max_disp = 2056 * testres
+    args.max_disp = int(args.max_disp) # max_disp = 2056 * testres
     args.max_disp = 16 * math.floor(args.max_disp/16)
 
     args.name = args.name + "_"+ datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
@@ -182,8 +182,8 @@ def main():
 
         pred_disp_png = (pred_disp * 256).astype('uint16')
         cv2.imwrite(os.path.join(disp_path, out_file_name), pred_disp_png)
-        # entropy_png = (entropy* 256).astype('uint16')
-        entropy_png = (entropy/entropy.max()*256)
+        entropy_png = (entropy* 256).astype('uint16')
+
         cv2.imwrite(os.path.join(entp_path, out_file_name), entropy_png)
 
         torch.cuda.empty_cache()

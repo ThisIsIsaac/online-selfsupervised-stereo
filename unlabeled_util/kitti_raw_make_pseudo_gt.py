@@ -1,3 +1,9 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..')))
+from rich import print, pretty, traceback
+traceback.install()
+pretty.install()
 import argparse
 import cv2
 from models import hsm
@@ -15,14 +21,17 @@ from utils.eval import mkdir_p, save_pfm
 from utils.preprocess import get_transform
 from dataloader import KITTIloader2015 as lk15
 import subprocess
-# cudnn.benchmark = True
+from datetime import datetime
+
 cudnn.benchmark = False
+from dataloader.KITTIRawloader import get_kitti_raw_paths
 
 
 
 def main():
     parser = argparse.ArgumentParser(description='HSM')
-    parser.add_argument('--datapath', default='./data-mbtest/',
+    parser.add_argument('--name', required=True, type=str)
+    parser.add_argument('--datapath', default='/data/privateKITTI_raw/2011_09_26',
                         help='test data path')
     parser.add_argument('--loadmodel', default=None,
                         help='model path')
@@ -40,13 +49,8 @@ def main():
                         help='output level of output, default is level 1 (stage 3),\
                             can also use level 2 (stage 2) or level 3 (stage 1)')
     args = parser.parse_args()
+    args.name = args.name + "_" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 
-    # dataloader
-    from dataloader import listfiles as DA
-
-    # test_left_img, test_right_img, _, _ = DA.dataloader(args.datapath)
-    # print("total test images: " + str(len(test_left_img)))
-    # print("output path: " + args.outdir)
 
     # construct model
     model = hsm(args.max_disp, args.clean, level=args.level)
@@ -71,38 +75,16 @@ def main():
         model.eval()
         pred_disp, entropy = model(imgL, imgR)
 
-    left_img_paths = []
-    right_img_paths = []
+    left_img_paths, right_img_paths, out_paths = get_kitti_raw_paths(args.datapath, True, args.name)
 
-    with open("unlabeled_util/exp_train_set.txt", "r") as file:
-        lines = file.readlines()
-        for line in lines:
-            line = line[:len(line)-1]
-            line = os.path.join("/DATA1/isaac", line)
-            left_img_paths.append(line)
-            right_img_paths.append(line.replace("/image_02/", "/image_03/"))
 
     processed = get_transform()
     model.eval()
 
-    # save predictions
-    out_path = "./unlabeled_util/pseudo_gt/disp"
-    if not os.path.exists(out_path):
-        os.mkdir(out_path)
 
-    if not os.path.exists("./unlabeled_util/pseudo_gt/entropy"):
-        os.mkdir("./unlabeled_util/pseudo_gt/entropy")
-    left_img_paths = left_img_paths[3038:]
-    right_img_paths = right_img_paths[3038:]
     
-    missing_right_imgs =[]
-    
-    for (left_img_path, right_img_path) in zip(left_img_paths, right_img_paths):
-        if not os.path.exists(right_img_path):
-            missing_right_imgs.append(left_img_path)
-            continue
-        # left_img_path = left_img_path[:len(left_img_path)-1]
-        # right_img_path =
+    for (left_img_path, right_img_path, out_path) in zip(left_img_paths, right_img_paths, out_paths):
+
         print(left_img_path)
         imgL_o = (skimage.io.imread(left_img_path).astype('float32'))[:, :, :3]
         imgR_o = (skimage.io.imread(right_img_path).astype('float32'))[:, :, :3]
@@ -155,7 +137,6 @@ def main():
 
         with torch.no_grad():
             torch.cuda.synchronize()
-            start_time = time.time()
 
             pred_disp, entropy = model(imgL, imgR)
             torch.cuda.synchronize()
@@ -167,8 +148,6 @@ def main():
         entropy = entropy[top_pad:, :pred_disp.shape[1] - left_pad].cpu().numpy()
         pred_disp = pred_disp[top_pad:, :pred_disp.shape[1] - left_pad]
 
-        img_name = left_img_path[len("/DATA1/isaac/KITTI_raw/"):].replace("/", "-")
-
         # resize to highres
         pred_disp = cv2.resize(pred_disp / args.testres, (imgsize[1], imgsize[0]), interpolation=cv2.INTER_LINEAR)
 
@@ -176,16 +155,20 @@ def main():
         invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
         pred_disp[invalid] = np.inf
 
+
+        img_name = left_img_path.split("/")[-1]
+        disp_path = os.path.join(out_path, "disp")
+        if os.path.exists(disp_path) == False:
+            os.mkdir(disp_path)
         pred_disp_png = (pred_disp * 256).astype('uint16')
-        cv2.imwrite(os.path.join("./unlabeled_util/pseudo_gt/disp", img_name), pred_disp_png)
+        cv2.imwrite(os.path.join(disp_path, img_name), pred_disp_png)
+
+        entp_path = os.path.join(out_path, "entropy")
+        if os.path.exists(entp_path) == False:
+            os.mkdir(entp_path)
         entropy_png = (entropy * 256).astype('uint16')
-        cv2.imwrite(os.path.join("./unlabeled_util/pseudo_gt/entropy", img_name), entropy_png)
-
-
+        cv2.imwrite(os.path.join(entp_path, img_name), entropy_png)
         torch.cuda.empty_cache()
-    with open("exp_error_imgs.txt", "w") as file:
-        for path in missing_right_imgs:
-            file.write(path + "\n")
 
 if __name__ == '__main__':
     main()
