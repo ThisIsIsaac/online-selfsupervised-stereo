@@ -23,6 +23,8 @@ def dataloader(filepath, val=False):
 
   image = [img for img in os.listdir(os.path.join(filepath,left_fold)) if img.find('_10') > -1]
   image = sorted(image)
+
+  # index starting from [0, 199]
   imglist = [1,3,6,20,26,35,38,41,43,44,49,60,67,70,81,84,89,97,109,119,122,123,129,130,132,134,141,144,152,158,159,165,171,174,179,182, 184,186,187,196]
 
 

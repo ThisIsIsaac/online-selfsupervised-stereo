@@ -31,6 +31,7 @@ def mb_dataloader(filepath, val=False):
         disp_val_R = [os.path.join(filepath,img_list[idx], "disp1GT.pfm") for idx in val_idx_list]
 
     return left_train, right_train, disp_train_L, disp_train_R, left_val, right_val, disp_val_L, disp_val_R
+    # return left_train, right_train, disp_train_L, disp_train_R
 
 def hr_dataloader(filepath, val=False):
     img_list = [i.split('/')[-1] for i in glob.glob('%s/*'%filepath) if os.path.isdir(i)]

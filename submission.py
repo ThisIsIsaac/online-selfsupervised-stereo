@@ -1,3 +1,9 @@
+from rich import print
+from rich import pretty
+pretty.install()
+from rich import traceback
+traceback.install()
+
 import argparse
 import cv2
 from models import hsm
@@ -15,7 +21,7 @@ from utils.eval import mkdir_p, save_pfm
 from utils.preprocess import get_transform
 #cudnn.benchmark = True
 cudnn.benchmark = False
-import wandb
+# import wandb
 
 parser = argparse.ArgumentParser(description='HSM')
 parser.add_argument('--datapath', default='./data-mbtest/',
@@ -39,11 +45,11 @@ parser.add_argument('--level', type=int, default=1,
                           can also use level 2 (stage 2) or level 3 (stage 1)')
 args = parser.parse_args()
 
-wandb_logger = wandb.init(name="submission.py", project="rvc_stereo", save_code=True, magic=True, config=args )
+# wandb_logger = wandb.init(name="submission.py", project="rvc_stereo", save_code=True, magic=True, config=args )
 
 # dataloader
 from dataloader import listfiles as DA
-test_left_img, test_right_img, _, _ = DA.dataloader(args.datapath)
+test_left_img, test_right_img, _, _, _, _, _, _ = DA.mb_dataloader(args.datapath)
 print("total test images: " + str(len(test_left_img)))
 print("output path: " + args.outdir)
 
@@ -124,8 +130,8 @@ def main():
         # test
         imgL = torch.FloatTensor(imgL)
         imgR = torch.FloatTensor(imgR).cuda()
-        wandb.log(
-            {"imgL": wandb.Image(imgL, caption=str(imgL.shape)), "imgR": wandb.Image(imgR, caption=str(imgR.shape))})
+        # wandb.log(
+        #     {"imgL": wandb.Image(imgL, caption=str(imgL.shape)), "imgR": wandb.Image(imgR, caption=str(imgR.shape))})
         imgL = imgL.cuda()
         imgR = imgR.cuda()
         with torch.no_grad():
@@ -161,7 +167,7 @@ def main():
         entropy_png = entropy/entropy.max()*255
         cv2.imwrite('%s/%s-ent.png'% (args.outdir, idxname.split('/')[0]),entropy_png)
 
-        wandb.log({"disp":wandb.Image(pred_disp_png,caption=str(pred_disp_png.shape)), "entropy":wandb.Image(entropy_png,caption=str(entropy_png.shape))})
+        # wandb.log({"disp":wandb.Image(pred_disp_png,caption=str(pred_disp_png.shape)), "entropy":wandb.Image(entropy_png,caption=str(entropy_png.shape))})
 
         with open('%s/%s.pfm'% (args.outdir, idxname),'w') as f:
             save_pfm(f,pred_disp[::-1,:])

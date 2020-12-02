@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import numpy as np
 import time
 from models import hsm
-from utils import wandb_logger
+from utils import wandb_logger, kitti_eval
 from sync_batchnorm.sync_batchnorm import convert_model
 from utils import get_metrics
 from collections import Counter
@@ -157,9 +157,11 @@ def train(imgL, imgR, disp_L):
     vis['entropy'] = entropy.detach().cpu().numpy()
     lossvalue = loss.data
 
+    errors = kitti_eval.evaluate(disp_L, stacked[0])
+
     del stacked
     del loss
-    return lossvalue, vis
+    return lossvalue, vis, errors
 
 def validate(imgL, imgR, disp_L):
     model.eval()
@@ -190,9 +192,11 @@ def validate(imgL, imgR, disp_L):
         vis['entropy'] = entropy.detach().cpu().numpy()
         lossvalue = loss.data
 
+        errors = kitti_eval.evaluate(disp_L, stacked[0])
+
         del stacked
         del loss
-        return lossvalue, vis
+        return lossvalue, vis, errors
 
 
 def adjust_learning_rate(optimizer, epoch):
@@ -219,7 +223,7 @@ def main():
         ## training ##
         for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(TrainImgLoader):
             start_time = time.time()
-            loss, vis = train(imgL_crop, imgR_crop, disp_crop_L)
+            loss, vis, errors = train(imgL_crop, imgR_crop, disp_crop_L)
             print('Epoch %d Iter %d training loss = %.3f , time = %.2f' % (epoch, batch_idx, loss, time.time() - start_time))
             total_train_loss += loss
 
@@ -256,7 +260,24 @@ def main():
                     'train_loss': total_train_loss / len(TrainImgLoader),
                 }, savefilename)
 
-        log.scalar_summary('train/loss', total_train_loss / len(TrainImgLoader), epoch)
+        if args.val and epoch % args.val_epoch == 0:
+            for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(ValImgLoader):
+                loss, vis, errors = validate(imgL_crop, imgR_crop, disp_crop_L)
+
+                log.image_summary('val/left', imgL_crop[0:1], total_iters)
+                log.image_summary('val/right', imgR_crop[0:1], total_iters)
+                log.image_summary('val/gt0', disp_crop_L[0:1], total_iters, get_color=True) # <-- GT disp
+                log.image_summary('val/entropy', vis['entropy'][0:1], total_iters, get_color=True)
+
+                # log outputs of model
+                log.image_summary('val/output3', vis['output3'][0:1], total_iters, get_color=True)
+                log.image_summary('val/output4', vis['output4'][0:1], total_iters, get_color=True)
+                log.image_summary('val/output5', vis['output5'][0:1], total_iters, get_color=True)
+                log.image_summary('val/output6', vis['output6'][0:1], total_iters, get_color=True)
+                log.scalar_summary('val/loss_batch', loss, total_iters)
+
+        log.scalar_summary('val/loss', total_train_loss / len(TrainImgLoader), epoch)
+        log.scalar_summary("val/errors", )
         torch.cuda.empty_cache()
 
 

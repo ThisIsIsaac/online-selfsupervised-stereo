@@ -9,7 +9,7 @@ from utils.eval import save_pfm
 from dataloader.RVCDataset import RVCDataset
 from torch.utils.data import DataLoader
 cudnn.benchmark = False
-import wandb
+# import wandb
 import score_rvc
 from utils.disp_converter import convert_to_colormap
 from sync_batchnorm.sync_batchnorm import convert_model
@@ -43,7 +43,7 @@ def main():
                         help='output dir')
     parser.add_argument('--clean', type=float, default=-1,
                         help='clean up output using entropy estimation')
-    parser.add_argument('--testres', type=float, default=-1, #default used to be 0.5
+    parser.add_argument('--testres', type=float, default=0.5, #default used to be 0.5
                         help='test time resolution ratio 0-x')
     parser.add_argument('--max_disp', type=float, default=-1,
                         help='maximum disparity to search for')
@@ -60,10 +60,12 @@ def main():
     parser.add_argument("--all_data", action="store_true", default=False)
     parser.add_argument("--eval_train_only", action="store_true", default=False)
     parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--batchsize", type=int, default=16)
     parser.add_argument("--prepare_kitti", action="store_true", default=False)
+
     args = parser.parse_args()
 
-    wandb.init(name=args.name, project="high-res-stereo", save_code=True, magic=True, config=args)
+    # wandb.init(name=args.name, project="high-res-stereo", save_code=True, magic=True, config=args)
 
     if not os.path.exists("output"):
         os.mkdir("output")
@@ -75,7 +77,7 @@ def main():
     # construct model
     model = hsm(128, args.clean, level=args.level)
     model = convert_model(model)
-    wandb.watch(model)
+    # wandb.watch(model)
     model = nn.DataParallel(model, device_ids=[0])
     model.cuda()
 
@@ -92,15 +94,23 @@ def main():
     if not args.prepare_kitti:
         dataset = RVCDataset(args)
     if args.prepare_kitti:
-        _, _, _, left_val, right_val, disp_val_L = lk15.dataloader('/DATA1/isaac/KITTI2015/data_scene_flow/training/',
+        _, _, _, left_val, right_val, disp_val_L = lk15.dataloader('/data/private/KITTI2015/data_scene_flow/training/',
                                                                       val=True)  # change to trainval when finetuning on KITTI
 
         dataset = DA.myImageFloder(left_val, right_val, disp_val_L, rand_scale=[1,1], order=0)
         
-    dataloader = DataLoader(dataset, batch_size=9, shuffle=False, num_workers=0)
+    dataloader = DataLoader(dataset, batch_size=args.batchsize, shuffle=False, num_workers=0)
         
     steps = 0
-    for (imgL, imgR, gt_disp_raw, max_disp, origianl_image_size, top_pad, left_pad, testres, dataset_type , data_path) in dataloader:
+    max_disp = None
+    origianl_image_size= None
+    top_pad=None
+    left_pad=None
+    testres=[args.testres]
+    dataset_type=None
+    data_path=[args.datapath]
+    # for (imgL, imgR, gt_disp_raw, max_disp, origianl_image_size, top_pad, left_pad, testres, dataset_type , data_path) in dataloader:
+    for (imgL, imgR, gt_disp_raw) in dataloader:
         # Todo: this is a hot fix. Must be fixed to handle batchsize greater than 1
         data_path = data_path[0]
         img_name = os.path.basename(os.path.normpath(data_path))
@@ -135,8 +145,8 @@ def main():
         model.module.disp_reg64 = disparityregression(model.module.maxdisp, 64).cuda()
         print("    max disparity = " + str(model.module.maxdisp))
 
-        wandb.log({"imgL": wandb.Image(imgL, caption=img_name + ", " + str(tuple(imgL.shape))),
-                   "imgR": wandb.Image(imgR, caption=img_name + ", " + str(tuple(imgR.shape)))}, step=steps)
+        # wandb.log({"imgL": wandb.Image(imgL, caption=img_name + ", " + str(tuple(imgL.shape))),
+        #            "imgR": wandb.Image(imgR, caption=img_name + ", " + str(tuple(imgR.shape)))}, step=steps)
 
         with torch.no_grad():
             torch.cuda.synchronize()
@@ -234,8 +244,8 @@ def main():
 
         # read GT depthmap and upload as jpg
 
-        wandb.log({"disparity": wandb.Image(pred_colormap, caption=caption) , "gt": wandb.Image(gt_colormap), "entropy": wandb.Image(entropy_colormap, caption= str(entorpy_png.shape)),
-                   "diff":wandb.Image(diff_colormap), "false_positive":wandb.Image(false_positive_colormap), "false_negative":wandb.Image(false_negative_colormap)}, step=steps)
+        # wandb.log({"disparity": wandb.Image(pred_colormap, caption=caption) , "gt": wandb.Image(gt_colormap), "entropy": wandb.Image(entropy_colormap, caption= str(entorpy_png.shape)),
+        #            "diff":wandb.Image(diff_colormap), "false_positive":wandb.Image(false_positive_colormap), "false_negative":wandb.Image(false_negative_colormap)}, step=steps)
 
         torch.cuda.empty_cache()
         steps+=1
@@ -269,11 +279,11 @@ def main():
                 cum_metrics[key].append(val)
                 avg_metrics["avg_" + key] = sum(cum_metrics[key]) / len(cum_metrics[key])
 
-            wandb.log(metrics, step=steps)
-            wandb.log(avg_metrics, step=steps)
+            # wandb.log(metrics, step=steps)
+            # wandb.log(avg_metrics, step=steps)
 
-    if args.save_weights and os.path.exists(args.loadmodel):
-        wandb.save(args.loadmodel)
+    # if args.save_weights and os.path.exists(args.loadmodel):
+    #     wandb.save(args.loadmodel)
 
     if args.prepare_kitti and (args.all_data or args.kitti):
         in_path = 'output/%s' % (args.name)

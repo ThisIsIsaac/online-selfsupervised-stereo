@@ -6,12 +6,14 @@ Email: spurushw<at>andrew<dot>cmu<dot>edu
 Github: https://github.com/senthilps8
 Description: 
 """
-
-import tensorflow as tf
+from utils.disp_converter import convert_to_colormap
+from torch.utils.tensorboard import SummaryWriter
 from torch.autograd import Variable
 import numpy as np
-import scipy.misc
 import os
+import torch
+import cv2
+
 try:
     from StringIO import StringIO  # Python 2.7
 except ImportError:
@@ -20,76 +22,112 @@ except ImportError:
 
 class Logger(object):
 
-    def __init__(self, log_dir, name=None):
+    def __init__(self, log_dir, name=None, save_numpy=False):
         """Create a summary writer logging to log_dir."""
         if name is None:
             name = 'temp'
         self.name = name
+        self.log_dir = os.path.join(log_dir, name)
+        self.save_numpy = save_numpy
         if name is not None:
             try:
-                os.makedirs(os.path.join(log_dir, name))
+                os.makedirs(self.log_dir)
             except:
                 pass
-            self.writer = tf.summary.FileWriter(os.path.join(log_dir, name),
-                                                filename_suffix=name)
+            self.writer = SummaryWriter(log_dir=self.log_dir,
+                                        filename_suffix=name)
         else:
-            self.writer = tf.summary.FileWriter(log_dir, filename_suffix=name)
+            self.writer = SummaryWriter(log_dir=self.log_dir, filename_suffix=name)
+
+        print("Logging files are saved in: " + self.log_dir)
 
     def scalar_summary(self, tag, value, step):
         """Log a scalar variable."""
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
-        self.writer.add_summary(summary, step)
+        # summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
+        self.writer.add_scalar(tag, value, step)
 
     def image_summary(self, tag, images, step):
         """Log a list of images."""
 
-        img_summaries = []
-        for i, img in enumerate(images):
-            # Write the image to a string
-            try:
-                s = StringIO()
-            except:
-                s = BytesIO()
-            scipy.misc.toimage(img).save(s, format="png")
+        if type(images) != np.ndarray:
+            images = images.detach().cpu().numpy()
 
-            # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
-                                       height=img.shape[0],
-                                       width=img.shape[1])
-            # Create a Summary value
-            img_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, i), image=img_sum))
+        # save_as_png=True #! <--- for debugging. Remove later
+        # if save_as_png:
+        #     name = tag.replace("/", "_")
+        #     images_png = images
+        #     # images_png = (images * 256).astype("uint16")
+        #     if len(images.shape) == 4:
+        #         images_png = images_png[0]
+        #         images_png = (images_png * 256).astype("uint16")
+        #     if len(images.shape) ==3:
+        #         images_png = np.transpose(images_png, axes=[1, 2, 0])
+        #     cv2.imwrite(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), images_png)
+        # images = images.astype(np.float) / 255
+        images = (images - images.min()) / (images.max() - images.min())
 
-        # Create and write Summary
-        summary = tf.Summary(value=img_summaries)
-        self.writer.add_summary(summary, step)
+        if len(images.shape) == 4:
+            self.writer.add_images(tag, images, step)
+
+        if len(images.shape) == 3:
+            self.writer.add_image(tag, images, step)
+
+
+    def disp_summary(self, tag, values, step):
+
+        if type(values) != np.ndarray:
+            values = values.detach().cpu().numpy()
+
+        if len(values.shape) ==3:
+            values = values[0]
+
+        if self.save_numpy:
+            name = tag.replace("/", "_")
+            np.save(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), values)
+
+        values = (values * 256).astype("uint16")
+        values = convert_to_colormap(values)
+        values = np.transpose(values, axes=[2, 0, 1])
+
+        # save_as_png = True
+        # if save_as_png:
+        #     name = tag.replace("/", "_")
+        #     images_png = values
+        #
+        #     if len(values.shape) == 4:
+        #         images_png = images_png[0]
+        #         images_png = (images_png * 256).astype("uint16")
+        #     if len(values.shape) == 3:
+        #         images_png = np.transpose(images_png, axes=[1, 2, 0])
+        #     cv2.imwrite(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), images_png)
+
+        images = (values - values.min()) / (values.max() - values.min())
+
+        if len(images.shape) == 4:
+            self.writer.add_images(tag, images, step)
+
+        if len(images.shape) == 3:
+            self.writer.add_image(tag, images, step)
+
+
+    def entp_summary(self, tag, values, step):
+        if type(values) != np.ndarray:
+            values = values.detach().cpu().numpy()
+        if len(values.shape) ==3:
+            values = values[0]
+
+        if self.save_numpy:
+            name = tag.replace("/", "_")
+            np.save(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), values)
+
+        self.image_summary(tag, values, step)
+
 
     def histo_summary(self, tag, values, step, bins=1000):
         """Log a histogram of the tensor of values."""
 
-        # Create a histogram using numpy
-        counts, bin_edges = np.histogram(values, bins=bins)
+        self.writer.add_histogram(tag, values, step, bins=bins)
 
-        # Fill the fields of the histogram proto
-        hist = tf.HistogramProto()
-        hist.min = float(np.min(values))
-        hist.max = float(np.max(values))
-        hist.num = int(np.prod(values.shape))
-        hist.sum = float(np.sum(values))
-        hist.sum_squares = float(np.sum(values**2))
-
-        # Drop the start of the first bin
-        bin_edges = bin_edges[1:]
-
-        # Add bin edges and counts
-        for edge in bin_edges:
-            hist.bucket_limit.append(edge)
-        for c in counts:
-            hist.bucket.append(c)
-
-        # Create and write Summary
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
-        self.writer.add_summary(summary, step)
-        self.writer.flush()
 
     def to_np(self, x):
         return x.data.cpu().numpy()

@@ -5,6 +5,12 @@ from colorspacious import cspace_converter
 import numpy as np
 import cv2
 
+
+# source: https://github.com/mrharicot/monodepth/issues/118#issuecomment-369582311
+def disp_to_depth(pred_disp, img_width, dataset="kitti"):
+    if dataset == "kitti":
+        return 0.54 * 721 / (img_width * pred_disp)
+
 def reject_outliers(data, m=2):
     return data[abs(data - np.mean(data)) < m * np.std(data)]
 

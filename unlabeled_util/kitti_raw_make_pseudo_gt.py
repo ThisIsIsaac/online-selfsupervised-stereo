@@ -31,7 +31,7 @@ from dataloader.KITTIRawloader import get_kitti_raw_paths
 def main():
     parser = argparse.ArgumentParser(description='HSM')
     parser.add_argument('--name', required=True, type=str)
-    parser.add_argument('--datapath', default='/data/privateKITTI_raw/2011_09_26',
+    parser.add_argument('--datapath', default='/data/privateKITTI_raw/',
                         help='test data path')
     parser.add_argument('--loadmodel', default=None,
                         help='model path')

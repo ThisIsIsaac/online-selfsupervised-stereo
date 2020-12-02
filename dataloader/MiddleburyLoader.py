@@ -7,6 +7,7 @@ from . import flow_transforms
 import pdb
 import torchvision
 import warnings
+from utils.preprocess import get_transform
 warnings.filterwarnings('ignore', '.*output shape of zoom.*')
 import cv2 
 
@@ -33,7 +34,7 @@ def disparity_loader(path):
 
 class myImageFloder(data.Dataset):
 
-    def __init__(self, left, right, left_disparity, right_disparity=None, left_entropy=None, loader=default_loader, dploader=disparity_loader, rand_scale=[0.225,0.6], rand_bright=[0.5,2.], order=0, entropy_threshold=None):
+    def __init__(self, left, right, left_disparity, right_disparity=None, left_entropy=None, is_validation=False, loader=default_loader, dploader=disparity_loader, rand_scale=[0.225,0.6], rand_bright=[0.5,2.], order=0, entropy_threshold=None, testres=None):
         self.left = left
         self.right = right
         self.disp_L = left_disparity
@@ -45,6 +46,13 @@ class myImageFloder(data.Dataset):
         self.order = order
         self.left_entropy = left_entropy
         self.entropy_threshold = entropy_threshold
+        self.is_validation = is_validation
+        self.processed = get_transform()
+        self.testres = testres
+
+        if self.is_validation and self.testres is None:
+            raise ValueError("testres argument is required for validation")
+
 
     def __getitem__(self, index):
 
@@ -56,83 +64,110 @@ class myImageFloder(data.Dataset):
         dataL = self.dploader(disp_L)
         dataL[dataL == np.inf] = 0
 
-        if self.left_entropy is not None:
-            entropy = self.dploader(self.left_entropy[index])
-            entropy = cv2.resize(entropy, ( dataL.shape[1], dataL.shape[0]), interpolation=cv2.INTER_LINEAR)
-            mask = [entropy > self.entropy_threshold]
-            dataL[mask] = 0
 
-        if not (self.disp_R is None):
-            disp_R = self.disp_R[index]
-            dataR = self.dploader(disp_R)
-            dataR[dataR == np.inf] = 0
 
-        max_h = 2048//4
-        max_w = 3072//4
+        if not self.is_validation:
+            if self.left_entropy is not None:
+                entropy = self.dploader(self.left_entropy[index])
+                entropy = cv2.resize(entropy, (dataL.shape[1], dataL.shape[0]), interpolation=cv2.INTER_LINEAR)
+                mask = [entropy > self.entropy_threshold]
+                dataL[mask] = 0
 
-        # photometric unsymmetric-augmentation
-        random_brightness = np.random.uniform(self.rand_bright[0], self.rand_bright[1],2)
-        random_gamma = np.random.uniform(0.8, 1.2,2)
-        random_contrast = np.random.uniform(0.8, 1.2,2)
-        left_img = torchvision.transforms.functional.adjust_brightness(left_img, random_brightness[0])
-        left_img = torchvision.transforms.functional.adjust_gamma(left_img, random_gamma[0])
-        left_img = torchvision.transforms.functional.adjust_contrast(left_img, random_contrast[0])
-        right_img = torchvision.transforms.functional.adjust_brightness(right_img, random_brightness[1])
-        right_img = torchvision.transforms.functional.adjust_gamma(right_img, random_gamma[1])
-        right_img = torchvision.transforms.functional.adjust_contrast(right_img, random_contrast[1])
-        right_img = np.asarray(right_img)
-        left_img = np.asarray(left_img)
+            if self.disp_R is not None:
+                disp_R = self.disp_R[index]
+                dataR = self.dploader(disp_R)
+                dataR[dataR == np.inf] = 0
 
-        # horizontal flip
-        if not (self.disp_R is None):
+            max_h = 2048 // 4
+            max_w = 3072 // 4
+
+            # photometric unsymmetric-augmentation
+            random_brightness = np.random.uniform(self.rand_bright[0], self.rand_bright[1],2)
+            random_gamma = np.random.uniform(0.8, 1.2,2)
+            random_contrast = np.random.uniform(0.8, 1.2,2)
+            left_img = torchvision.transforms.functional.adjust_brightness(left_img, random_brightness[0])
+            left_img = torchvision.transforms.functional.adjust_gamma(left_img, random_gamma[0])
+            left_img = torchvision.transforms.functional.adjust_contrast(left_img, random_contrast[0])
+            right_img = torchvision.transforms.functional.adjust_brightness(right_img, random_brightness[1])
+            right_img = torchvision.transforms.functional.adjust_gamma(right_img, random_gamma[1])
+            right_img = torchvision.transforms.functional.adjust_contrast(right_img, random_contrast[1])
+            right_img = np.asarray(right_img)
+            left_img = np.asarray(left_img)
+
+            # horizontal flip
+            if not (self.disp_R is None):
+                if np.random.binomial(1,0.5):
+                    tmp = right_img
+                    right_img = left_img[:,::-1]
+                    left_img = tmp[:,::-1]
+                    tmp = dataR
+                    dataR = dataL[:,::-1]
+                    dataL = tmp[:,::-1]
+
+            # geometric unsymmetric-augmentation
+            angle=0;px=0
             if np.random.binomial(1,0.5):
-                tmp = right_img
-                right_img = left_img[:,::-1]
-                left_img = tmp[:,::-1]
-                tmp = dataR
-                dataR = dataL[:,::-1]
-                dataL = tmp[:,::-1]
-
-        # geometric unsymmetric-augmentation
-        angle=0;px=0
-        if np.random.binomial(1,0.5):
-            angle=0.1;px=2
-        co_transform = flow_transforms.Compose([
-            flow_transforms.RandomVdisp(angle,px),
-            flow_transforms.Scale(np.random.uniform(self.rand_scale[0],self.rand_scale[1]),order=self.order),
-            flow_transforms.RandomCrop((max_h,max_w)),
-            ])
-        augmented,dataL = co_transform([left_img, right_img], dataL)
-        left_img = augmented[0]
-        right_img = augmented[1]
-
-       
-        # randomly occlude a region
-        if np.random.binomial(1,0.5):
-            sx = int(np.random.uniform(50,150))
-            sy = int(np.random.uniform(50,150))
-            cx = int(np.random.uniform(sx,right_img.shape[0]-sx))
-            cy = int(np.random.uniform(sy,right_img.shape[1]-sy))
-            right_img[cx-sx:cx+sx,cy-sy:cy+sy] = np.mean(np.mean(right_img,0),0)[np.newaxis,np.newaxis]
+                angle=0.1;px=2
+            co_transform = flow_transforms.Compose([
+                flow_transforms.RandomVdisp(angle,px),
+                flow_transforms.Scale(np.random.uniform(self.rand_scale[0],self.rand_scale[1]),order=self.order),
+                flow_transforms.RandomCrop((max_h,max_w)),
+                ])
+            augmented,dataL = co_transform([left_img, right_img], dataL)
+            left_img = augmented[0]
+            right_img = augmented[1]
 
 
-        h, w,_ = left_img.shape
-        top_pad = max_h - h
-        left_pad = max_w - w
-        left_img = np.lib.pad(left_img, ((top_pad, 0), (0, left_pad),(0,0)), mode='constant', constant_values=0)
-        right_img = np.lib.pad(right_img, ((top_pad, 0), (0, left_pad),(0,0)), mode='constant', constant_values=0)
+            # randomly occlude a region
+            if np.random.binomial(1,0.5):
+                sx = int(np.random.uniform(50,150))
+                sy = int(np.random.uniform(50,150))
+                cx = int(np.random.uniform(sx,right_img.shape[0]-sx))
+                cy = int(np.random.uniform(sy,right_img.shape[1]-sy))
+                right_img[cx-sx:cx+sx,cy-sy:cy+sy] = np.mean(np.mean(right_img,0),0)[np.newaxis,np.newaxis]
 
-        disp_top_pad = max_h - dataL.shape[0]
-        disp_left_pad = max_w - dataL.shape[1]
-        dataL = np.expand_dims(np.expand_dims(dataL, 0), 0)
-        dataL = np.lib.pad(dataL, ((0, 0), (0, 0), (disp_top_pad, 0), (0, disp_left_pad)), mode='constant', constant_values=0)[0,0]
-        dataL = np.ascontiguousarray(dataL, dtype=np.float32)
+            h, w,_ = left_img.shape
+            top_pad = max_h - h
+            left_pad = max_w - w
+            left_img = np.lib.pad(left_img, ((top_pad, 0), (0, left_pad),(0,0)), mode='constant', constant_values=0)
+            right_img = np.lib.pad(right_img, ((top_pad, 0), (0, left_pad),(0,0)), mode='constant', constant_values=0)
 
-        processed = preprocess.get_transform()
-        left_img = processed(left_img)
-        right_img = processed(right_img)
-        
-        return (left_img, right_img, dataL)
+            disp_top_pad = max_h - dataL.shape[0]
+            disp_left_pad = max_w - dataL.shape[1]
+            dataL = np.expand_dims(np.expand_dims(dataL, 0), 0)
+            dataL = np.lib.pad(dataL, ((0, 0), (0, 0), (disp_top_pad, 0), (0, disp_left_pad)), mode='constant', constant_values=0)[0,0]
+            dataL = np.ascontiguousarray(dataL, dtype=np.float32)
+
+            processed = preprocess.get_transform()
+            left_img = processed(left_img)
+            right_img = processed(right_img)
+
+            return (left_img, right_img, dataL)
+
+        if self.is_validation:
+            left_img = np.array(left_img)
+            right_img = np.array(right_img)
+            left_img = cv2.resize(left_img,None,fx=self.testres,fy=self.testres,interpolation=cv2.INTER_CUBIC)
+            right_img = cv2.resize(right_img,None,fx=self.testres,fy=self.testres,interpolation=cv2.INTER_CUBIC)
+            left_img = self.processed(left_img).numpy()
+            right_img = self.processed(right_img).numpy()
+
+            left_img = np.reshape(left_img,[1,3,left_img.shape[1],left_img.shape[2]])
+            right_img = np.reshape(right_img,[1,3,right_img.shape[1],right_img.shape[2]])
+
+            ##fast pad
+            max_h = int(left_img.shape[2] // 64 * 64)
+            max_w = int(left_img.shape[3] // 64 * 64)
+            if max_h < left_img.shape[2]: max_h += 64
+            if max_w < left_img.shape[3]: max_w += 64
+
+            top_pad = max_h-left_img.shape[2]
+            left_pad = max_w-left_img.shape[3]
+            left_img = np.lib.pad(left_img,((0,0),(0,0),(top_pad,0),(0,left_pad)),mode='constant',constant_values=0)
+            right_img = np.lib.pad(right_img,((0,0),(0,0),(top_pad,0),(0,left_pad)),mode='constant',constant_values=0)
+            left_img = left_img[0]
+            right_img = right_img[0]
+            return (left_img, right_img, dataL)
 
     def __len__(self):
         return len(self.left)

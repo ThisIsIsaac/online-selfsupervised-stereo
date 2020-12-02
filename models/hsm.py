@@ -89,20 +89,18 @@ class HSMNet(nn.Module):
         else:
             final_reg = self.disp_reg8
 
-        if self.training or self.clean==-1:
-            pred3, entropy = final_reg(F.softmax(cost3,1)) # to save memory
-        else:
-            pred3,entropy = final_reg(F.softmax(cost3,1),ifent=True)
+        pred3,entropy = final_reg(F.softmax(cost3,1),ifent=True)
+        if self.clean != -1 and self.clean is not False:
             pred3[entropy>self.clean] = np.inf
 
-        if self.training:
-            cost6 = F.upsample((cost6).unsqueeze(1), [self.disp_reg8.disp.shape[1], left.size()[2],left.size()[3]], mode='trilinear').squeeze(1)
-            cost5 = F.upsample((cost5).unsqueeze(1), [self.disp_reg8.disp.shape[1], left.size()[2],left.size()[3]], mode='trilinear').squeeze(1)
-            cost4 = F.upsample(cost4, [left.size()[2],left.size()[3]], mode='bilinear')
-            pred6, _ = self.disp_reg16(F.softmax(cost6,1))
-            pred5, _ = self.disp_reg16(F.softmax(cost5,1))
-            pred4, _ = self.disp_reg16(F.softmax(cost4,1))
-            stacked = [pred3,pred4,pred5,pred6]   
-            return stacked,entropy
-        else:
-            return pred3,torch.squeeze(entropy)
+        # if self.training:
+        cost6 = F.upsample((cost6).unsqueeze(1), [self.disp_reg8.disp.shape[1], left.size()[2],left.size()[3]], mode='trilinear').squeeze(1)
+        cost5 = F.upsample((cost5).unsqueeze(1), [self.disp_reg8.disp.shape[1], left.size()[2],left.size()[3]], mode='trilinear').squeeze(1)
+        cost4 = F.upsample(cost4, [left.size()[2],left.size()[3]], mode='bilinear')
+        pred6, _ = self.disp_reg16(F.softmax(cost6,1))
+        pred5, _ = self.disp_reg16(F.softmax(cost5,1))
+        pred4, _ = self.disp_reg16(F.softmax(cost4,1))
+        stacked = [pred3,pred4,pred5,pred6]
+        return stacked,entropy
+        # else:
+        #     return pred3,torch.squeeze(entropy)
