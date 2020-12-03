@@ -24,17 +24,22 @@ def default_loader(path):
 
 
 def disparity_loader(path):
-    if '.png' in path:
+    if path.endswith('.png'):
         data = Image.open(path)
         data = np.ascontiguousarray(data,dtype=np.float32)/256
         return data
-    else:
+    elif path.endswith(".pfm"):
         return rp.readPFM(path)[0]
-
+    elif path.endswith(".npy"):
+        return np.load(path)
+    else:
+        raise ValueError("Disparity file is in unrecognized format: " + path)
 
 class myImageFloder(data.Dataset):
 
-    def __init__(self, left, right, left_disparity, right_disparity=None, left_entropy=None, is_validation=False, loader=default_loader, dploader=disparity_loader, rand_scale=[0.225,0.6], rand_bright=[0.5,2.], order=0, entropy_threshold=None, testres=None):
+    def __init__(self, left, right, left_disparity, right_disparity=None, left_entropy=None, is_validation=False,
+                 loader=default_loader, dploader=disparity_loader, rand_scale=[0.225,0.6], rand_bright=[0.5,2.],
+                 order=0, entropy_threshold=None, testres=None, use_pseudoGT=False):
         self.left = left
         self.right = right
         self.disp_L = left_disparity
@@ -49,9 +54,14 @@ class myImageFloder(data.Dataset):
         self.is_validation = is_validation
         self.processed = get_transform()
         self.testres = testres
+        self.use_pseudoGT = use_pseudoGT
 
         if self.is_validation and self.testres is None:
             raise ValueError("testres argument is required for validation")
+
+        if self.use_pseudoGT:
+            if entropy_threshold is None or left_entropy is None:
+                raise ValueError("when using pseudo GT, entorpy_threshold and left_entropy must be provided")
 
 
     def __getitem__(self, index):
@@ -65,12 +75,12 @@ class myImageFloder(data.Dataset):
         dataL[dataL == np.inf] = 0
 
 
-
+        ##* training *##
         if not self.is_validation:
-            if self.left_entropy is not None:
+            if self.use_pseudoGT:
                 entropy = self.dploader(self.left_entropy[index])
                 entropy = cv2.resize(entropy, (dataL.shape[1], dataL.shape[0]), interpolation=cv2.INTER_LINEAR)
-                mask = [entropy > self.entropy_threshold]
+                mask = entropy > self.entropy_threshold
                 dataL[mask] = 0
 
             if self.disp_R is not None:
@@ -144,6 +154,7 @@ class myImageFloder(data.Dataset):
 
             return (left_img, right_img, dataL)
 
+        ##* validation (i.e. no data augmentation, only scailing and padding) *##
         if self.is_validation:
             left_img = np.array(left_img)
             right_img = np.array(right_img)

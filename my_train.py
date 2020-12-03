@@ -90,35 +90,32 @@ def val_step(model, imgL, imgR, disp_L, maxdisp, testres):
         mask.detach_()
         # ----
 
-        stacked, entropy = model(imgL, imgR)
+        out, entropy = model(imgL, imgR)
 
-        top_pad = stacked[0].shape[-2] - math.ceil(testres * disp_L.shape[-2])
-        left_pad = stacked[0].shape[-1] - math.ceil(testres * disp_L.shape[-1])
-        for i in range(len(stacked)):
-            out = stacked[i][:, top_pad:,:stacked[i].shape[-1]-left_pad]
-            out = torch.unsqueeze(out, 0)
-            out = F.interpolate(out/testres, size=(disp_L.shape[-2],disp_L.shape[-1]), mode="bilinear")
-            stacked[i] = out[0]
-            # stacked[i] = cv2.resize(out/testres,(disp_L.shape[-2],disp_L.shape[-1]),interpolation=cv2.INTER_LINEAR)
+        top_pad = out.shape[-2] - math.ceil(testres * disp_L.shape[-2])
+        left_pad = out.shape[-1] - math.ceil(testres * disp_L.shape[-1])
+        out = out[:, top_pad:, :out.shape[-1] - left_pad]
+        out = torch.unsqueeze(out, 0)
+        out = F.interpolate(out / testres, size=(disp_L.shape[-2], disp_L.shape[-1]), mode="bilinear")
 
-        loss = (64. / 85) * F.smooth_l1_loss(stacked[0][mask], disp_true[mask], size_average=True) + \
-            (16. / 85) * F.smooth_l1_loss(stacked[1][mask], disp_true[mask], size_average=True) + \
-            (4. / 85) * F.smooth_l1_loss(stacked[2][mask], disp_true[mask], size_average=True) + \
-            (1. / 85) * F.smooth_l1_loss(stacked[3][mask], disp_true[mask], size_average=True)
+        # loss = (64. / 85) * F.smooth_l1_loss(stacked[0][mask], disp_true[mask], size_average=True) + \
+        #     (16. / 85) * F.smooth_l1_loss(stacked[1][mask], disp_true[mask], size_average=True) + \
+        #     (4. / 85) * F.smooth_l1_loss(stacked[2][mask], disp_true[mask], size_average=True) + \
+        #     (1. / 85) * F.smooth_l1_loss(stacked[3][mask], disp_true[mask], size_average=True)
 
         vis = {}
-        vis['output3'] = stacked[0].detach().cpu().numpy()
-        vis['output4'] = stacked[1].detach().cpu().numpy()
-        vis['output5'] = stacked[2].detach().cpu().numpy()
-        vis['output6'] = stacked[3].detach().cpu().numpy()
+        vis['output3'] = out.detach().cpu().numpy()
+        # vis['output4'] = stacked[1].detach().cpu().numpy()
+        # vis['output5'] = stacked[2].detach().cpu().numpy()
+        # vis['output6'] = stacked[3].detach().cpu().numpy()
         vis['entropy'] = entropy.detach().cpu().numpy()
-        lossvalue = loss.data
+        # lossvalue = loss.data
 
         eval_score = kitti_eval.evaluate(disp_true.detach().cpu().numpy(), vis['output3'][0])
 
-        del stacked
-        del loss
-        return lossvalue, vis, eval_score
+        # del stacked
+        # del loss
+        return vis, eval_score
 
 
 def adjust_learning_rate(batchsize, epochs, optimizer, epoch):
@@ -155,6 +152,8 @@ def main():
     parser.add_argument("--val", action="store_true", default=False)
     parser.add_argument("--save_numpy", action="store_true", default=False)
     parser.add_argument("--testres", type=float, default=1.8)
+    parser.add_argument("--threshold", type=float, default=None)
+    parser.add_argument("--use_pseudoGT", default=False, action="store_true")
 
     args = parser.parse_args()
     torch.manual_seed(args.seed)
@@ -190,10 +189,53 @@ def main():
     all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader(
         '%s/KITTI2015/data_scene_flow/training/' % args.database,
         val=args.val)  # change to trainval when finetuning on KITTI
+    # all_left_img = [left_val[3]] * args.batchsize
+    # all_right_img = [right_val[3]] * args.batchsize
+
+    all_left_img = []
+    all_right_img = []
+
+    left_img_name= os.listdir("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_02/data")
+    right_img_name= os.listdir("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_03/data")
+    left_disp_path_all = os.listdir("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/disp")
+    left_entropy_path_all = os.listdir("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/entropy")
+
+    left_img_name.sort()
+    right_img_name.sort()
+    left_disp_path_all.sort()
+    left_entropy_path_all.sort()
+
+    all_left_disp = []
+    left_entropy = []
+    for i in range(len(left_disp_path_all)):
+        if left_disp_path_all[i].endswith(".npy"):
+            p = os.path.join("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/disp", left_disp_path_all[i])
+            all_left_disp.append(p)
+        if left_entropy_path_all[i].endswith(".npy"):
+            p = os.path.join("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/entropy",
+                             left_entropy_path_all[i])
+            left_entropy.append(p)
+
+    all_left_img = []
+    all_right_img = []
+    for i in range(len(left_img_name)):
+        l_p = os.path.join("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_02/data", left_img_name[i])
+        r_p = os.path.join("/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_03/data", right_img_name[i])
+
+        all_left_img.append(l_p)
+        all_right_img.append(r_p)
+
+    # all_left_disp = ["/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/disp/0000000040.npy"] * args.batchsize
+    # left_entropy = ["/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/entropy/0000000040.npy"] * args.batchsize
+
+    left_val = [left_val[3]]
+    right_val = [right_val[3]]
+    disp_val_L = [disp_val_L[3]]
+
     loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
-                                      order=0)
-    val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, is_validation=True, rand_scale=[0.9, 2.4 * scale_factor],
-                                          order=0, testres=1.8)
+                                      order=0, use_pseudoGT=args.use_pseudoGT, entropy_threshold=args.threshold,
+                                      left_entropy=left_entropy)
+    val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, is_validation=True, testres=1.8)
 
     #
     # all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk12.dataloader(
@@ -216,7 +258,8 @@ def main():
     train_data_inuse = loader_kitti15
     val_data_inuse = val_loader_kitti15
 
-    ValImgLoader = torch.utils.data.DataLoader(val_data_inuse, drop_last=False, worker_init_fn=_init_fn, num_workers=batch_size)
+    ValImgLoader = torch.utils.data.DataLoader(val_data_inuse, drop_last=False, worker_init_fn=_init_fn, batch_size=1,
+                                               shuffle=False)
 
     TrainImgLoader = torch.utils.data.DataLoader(
         train_data_inuse,
@@ -262,8 +305,8 @@ def main():
         print('Epoch %d / %d' % (epoch, args.epochs))
 
         ## val ##
-        # if epoch % args.val_epoch == 0:
-        if True:
+        if epoch % args.val_epoch == 0:
+        # if True:
             print("validating at epoch: " + str(epoch))
             total_val_loss = 0
             val_score_accum_dict = {} # accumulates scores throughout a batch to get average score
@@ -271,12 +314,12 @@ def main():
 
 
                 # start_time = time.time()
-                loss, vis, scores_list = val_step(model, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp, args.testres)
+                vis, scores_list = val_step(model, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp, args.testres)
                 # print('Epoch %d Iter %d training loss = %.3f , time = %.2f' % (
                 #        epoch, batch_idx, loss, time.time() - start_time))
-                total_val_loss += loss
+                # total_val_loss += loss
 
-                log.scalar_summary('val/loss_batch', loss, val_iters)
+                # log.scalar_summary('val/loss_batch', loss, val_iters)
 
                 for score in scores_list:
                     for tag, val in score.items():
@@ -289,17 +332,17 @@ def main():
                 log.image_summary('val/left', imgL_crop[0:1], val_iters)
                 log.image_summary('val/right', imgR_crop[0:1], val_iters)
                 log.disp_summary('val/gt0', disp_crop_L[0:1], val_iters)  # <-- GT disp
-                log.entp_summary('val/entropy', vis['entropy'][0:1], val_iters)
-                log.disp_summary('val/output3', vis['output3'][0:1], val_iters)
-                log.disp_summary('val/output4', vis['output4'][0:1], val_iters)
-                log.disp_summary('val/output5', vis['output5'][0:1], val_iters)
-                log.disp_summary('val/output6', vis['output6'][0:1], val_iters)
+                log.entp_summary('val/entropy', vis['entropy'], val_iters)
+                log.disp_summary('val/output3', vis['output3'][0], val_iters)
+                # log.disp_summary('val/output4', vis['output4'][0:1], val_iters)
+                # log.disp_summary('val/output5', vis['output5'][0:1], val_iters)
+                # log.disp_summary('val/output6', vis['output6'][0:1], val_iters)
 
                 val_iters += 1
 
-            log.scalar_summary('val/loss_avg', total_val_loss / len(ValImgLoader), epoch)
-            for tag, val in val_score_accum_dict.items():
-                log.scalar_summary("val/" + tag + "_avg", val/len(ValImgLoader), epoch)
+            # log.scalar_summary('val/loss_avg', total_val_loss / len(ValImgLoader), epoch)
+            # for tag, val in val_score_accum_dict.items():
+            #     log.scalar_summary("val/" + tag + "_avg", val/len(ValImgLoader), epoch)
 
         ## training ##
         for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(TrainImgLoader):
@@ -321,20 +364,21 @@ def main():
                         train_score_accum_dict[tag] += val
                         train_score_accum_dict["num_scored"] += imgL_crop.shape[0]
 
-            if total_iters % 100 == 0:
+            if total_iters % 10 == 0:
                 log.image_summary('train/left', imgL_crop[0:1], total_iters)
                 log.image_summary('train/right', imgR_crop[0:1], total_iters)
                 log.disp_summary('train/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
-                log.disp_summary('train/entropy', vis['entropy'][0:1], total_iters)
+                log.entp_summary('train/entropy', vis['entropy'][0:1], total_iters)
                 log.disp_summary('train/output3', vis['output3'][0:1], total_iters)
-                log.disp_summary('train/output4', vis['output4'][0:1], total_iters)
-                log.disp_summary('train/output5', vis['output5'][0:1], total_iters)
-                log.disp_summary('train/output6', vis['output6'][0:1], total_iters)
+                # log.disp_summary('train/output4', vis['output4'][0:1], total_iters)
+                # log.disp_summary('train/output5', vis['output5'][0:1], total_iters)
+                # log.disp_summary('train/output6', vis['output6'][0:1], total_iters)
 
             total_iters += 1
 
             if (total_iters + 1) % 2000 == 0:
                 # SAVE
+                print("saving weights at epoch: " + str(epoch))
                 savefilename = os.path.join(save_path, 'finetune_' + str(total_iters) + '.tar')
 
                 torch.save({
@@ -344,8 +388,8 @@ def main():
                 }, savefilename)
 
         log.scalar_summary('train/loss', total_train_loss / len(TrainImgLoader), epoch)
-        for tag, val in train_score_accum_dict.items():
-            log.scalar_summary("train/" + tag + "_avg", val / train_score_accum_dict["num_scored"], epoch)
+        # for tag, val in train_score_accum_dict.items():
+        #     log.scalar_summary("train/" + tag + "_avg", val / train_score_accum_dict["num_scored"], epoch)
         torch.cuda.empty_cache()
 
 

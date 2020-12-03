@@ -149,15 +149,17 @@ class decoderBlock(nn.Module):
        #     fvl = self.up(fvl)
        #  if self.training:
         # classification
-        costl = self.classify(fvl)
-        if self.up:
-            fvl = self.up(fvl)
-        # else:
-        #     # classification
-        #     if self.up:
-        #         fvl = self.up(fvl)
-        #         costl=fvl
-        #     else:
-        #         costl = self.classify(fvl)
-        #
+        if self.training:
+            # classification
+            costl = self.classify(fvl)
+            if self.up:
+                fvl = self.up(fvl)
+        else:
+            # classification
+            if self.up:
+                fvl = self.up(fvl)
+                costl=fvl
+            else:
+                costl = self.classify(fvl)
+
         return fvl,costl.squeeze(1)

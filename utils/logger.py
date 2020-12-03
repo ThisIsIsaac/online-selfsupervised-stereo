@@ -83,23 +83,11 @@ class Logger(object):
 
         if self.save_numpy:
             name = tag.replace("/", "_")
-            np.save(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), values)
+            np.save(os.path.join(self.log_dir, name + "_" + str(step)), values)
 
         values = (values * 256).astype("uint16")
         values = convert_to_colormap(values)
         values = np.transpose(values, axes=[2, 0, 1])
-
-        # save_as_png = True
-        # if save_as_png:
-        #     name = tag.replace("/", "_")
-        #     images_png = values
-        #
-        #     if len(values.shape) == 4:
-        #         images_png = images_png[0]
-        #         images_png = (images_png * 256).astype("uint16")
-        #     if len(values.shape) == 3:
-        #         images_png = np.transpose(images_png, axes=[1, 2, 0])
-        #     cv2.imwrite(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), images_png)
 
         images = (values - values.min()) / (values.max() - values.min())
 
@@ -116,11 +104,19 @@ class Logger(object):
         if len(values.shape) ==3:
             values = values[0]
 
+        values = (values/values.min() * 256).astype("uint16")
+        values = convert_to_colormap(values)
+        values = np.transpose(values, axes=[2, 0, 1])
+        images = (values - values.min()) / (values.max() - values.min())
+
         if self.save_numpy:
             name = tag.replace("/", "_")
-            np.save(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), values)
+            np.save(os.path.join(self.log_dir, name + "_" + str(step)), values)
 
-        self.image_summary(tag, values, step)
+        if len(images.shape) == 2:
+            images = images[np.newaxis, ...]
+
+        self.writer.add_image(tag, images, step)
 
 
     def histo_summary(self, tag, values, step, bins=1000):
