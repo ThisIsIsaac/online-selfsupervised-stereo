@@ -118,9 +118,9 @@ def val_step(model, imgL, imgR, disp_L, maxdisp, testres):
         return vis, eval_score
 
 
-def adjust_learning_rate(batchsize, epochs, optimizer, epoch):
-    # * ratio of lr to batchsize is 0.01:28 
-    lr = 1e-3 * (batchsize / 28)
+def adjust_learning_rate(batch_size, epochs, optimizer, epoch):
+    # * ratio of lr to batch_size is 0.01:28
+    lr = 1e-3 * (batch_size / 28)
     if epoch > epochs - 1:
         lr = lr / 10
 
@@ -137,7 +137,7 @@ def main():
                         help='data path')
     parser.add_argument('--epochs', type=int, default=10,
                         help='number of epochs to train')
-    parser.add_argument('--batchsize', type=int, default=18,
+    parser.add_argument('--batch_size', type=int, default=18,
                         # when maxdisp is 768, 18 is the most you can fit in 2 V100s (with syncBN on)
                         help='samples per batch')
     parser.add_argument('--loadmodel', default=None,
@@ -159,7 +159,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.manual_seed(args.seed)  # set again
     torch.cuda.manual_seed(args.seed)
-    batch_size = args.batchsize
+    batch_size = args.batch_size
     scale_factor = args.maxdisp / 384.  # controls training resolution
     args.name = args.name + "_" + time.strftime('%l:%M%p_%Y%b%d').strip(" ")
 
@@ -189,8 +189,8 @@ def main():
     all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader(
         '%s/KITTI2015/data_scene_flow/training/' % args.database,
         val=args.val)  # change to trainval when finetuning on KITTI
-    # all_left_img = [left_val[3]] * args.batchsize
-    # all_right_img = [right_val[3]] * args.batchsize
+    # all_left_img = [left_val[3]] * args.batch_size
+    # all_right_img = [right_val[3]] * args.batch_size
 
     all_left_img = []
     all_right_img = []
@@ -225,8 +225,8 @@ def main():
         all_left_img.append(l_p)
         all_right_img.append(r_p)
 
-    # all_left_disp = ["/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/disp/0000000040.npy"] * args.batchsize
-    # left_entropy = ["/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/entropy/0000000040.npy"] * args.batchsize
+    # all_left_disp = ["/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/disp/0000000040.npy"] * args.batch_size
+    # left_entropy = ["/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px/entropy/0000000040.npy"] * args.batch_size
 
     left_val = [left_val[3]]
     right_val = [right_val[3]]
@@ -258,12 +258,14 @@ def main():
     train_data_inuse = loader_kitti15
     val_data_inuse = val_loader_kitti15
 
-    ValImgLoader = torch.utils.data.DataLoader(val_data_inuse, drop_last=False, worker_init_fn=_init_fn, batch_size=1,
-                                               shuffle=False)
+    #! For internal bug in Pytorch, if you are going to set num_workers >0 in one dataloader, it must also be set to
+    #! n >0 for the other data loader as well (ex. 1 for valLoader and 10 for trainLoader)
+    ValImgLoader = torch.utils.data.DataLoader(val_data_inuse, drop_last=False, batch_size=1,
+                                               shuffle=False, worker_init_fn=_init_fn, num_workers=1) #
 
     TrainImgLoader = torch.utils.data.DataLoader(
         train_data_inuse,
-        batch_size=batch_size, shuffle=True, num_workers=batch_size, drop_last=True, worker_init_fn=_init_fn)
+        batch_size=batch_size, shuffle=True,  drop_last=True, worker_init_fn=_init_fn, num_workers=args.batch_size) #, , worker_init_fn=_init_fn
 
     print('%d batches per epoch' % (len(train_data_inuse) // batch_size))
 
@@ -301,7 +303,7 @@ def main():
         total_train_loss = 0
         train_score_accum_dict = {} # accumulates scores throughout a batch to get average score
         train_score_accum_dict["num_scored"] = 0
-        adjust_learning_rate(args.batchsize, args.epochs, optimizer, epoch)
+        adjust_learning_rate(args.batch_size, args.epochs, optimizer, epoch)
         print('Epoch %d / %d' % (epoch, args.epochs))
 
         ## val ##
