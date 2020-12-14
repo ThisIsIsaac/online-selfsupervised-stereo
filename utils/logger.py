@@ -13,12 +13,44 @@ import numpy as np
 import os
 import torch
 import cv2
-
+import matplotlib
+import matplotlib.pyplot as plt
+import io
+from PIL import Image
 try:
     from StringIO import StringIO  # Python 2.7
 except ImportError:
     from io import BytesIO         # Python 3.x
 
+def cmap_map(function, cmap):
+    """ Applies function (which should operate on vectors of shape 3: [r, g, b]), on colormap cmap.
+    This routine will break any discontinuous points in a colormap.
+    """
+    cdict = cmap._segmentdata
+    step_dict = {}
+    # Firt get the list of points where the segments start or end
+    for key in ('red', 'green', 'blue'):
+        step_dict[key] = list(map(lambda x: x[0], cdict[key]))
+    step_list = sum(step_dict.values(), [])
+    step_list = np.array(list(set(step_list)))
+    # Then compute the LUT, and apply the function to the LUT
+    reduced_cmap = lambda step : np.array(cmap(step)[0:3])
+    old_LUT = np.array(list(map(reduced_cmap, step_list)))
+    new_LUT = np.array(list(map(function, old_LUT)))
+    # Now try to make a minimal segment definition of the new LUT
+    cdict = {}
+    for i, key in enumerate(['red','green','blue']):
+        this_cdict = {}
+        for j, step in enumerate(step_list):
+            if step in step_dict[key]:
+                this_cdict[step] = new_LUT[j, i]
+            elif new_LUT[j,i] != old_LUT[j, i]:
+                this_cdict[step] = new_LUT[j, i]
+        colorvector = list(map(lambda x: x + (x[1], ), this_cdict.items()))
+        colorvector.sort()
+        cdict[key] = colorvector
+
+    return matplotlib.colors.LinearSegmentedColormap('colormap',cdict,1024)
 
 class Logger(object):
 
@@ -64,6 +96,8 @@ class Logger(object):
         #         images_png = np.transpose(images_png, axes=[1, 2, 0])
         #     cv2.imwrite(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), images_png)
         # images = images.astype(np.float) / 255
+        if images.dtype == bool:
+            images = images.astype(float)
         images = (images - images.min()) / (images.max() - images.min())
 
         if len(images.shape) == 4:
@@ -71,6 +105,28 @@ class Logger(object):
 
         if len(images.shape) == 3:
             self.writer.add_image(tag, images, step)
+
+    def heatmap_summary(self, tag, values, step):
+        light_jet = cmap_map(lambda x: x / 2 + 0.5, matplotlib.cm.jet)
+         # = plt.figure()
+        fig=plt.imshow(values, cmap=light_jet)
+        plt.colorbar(fig)
+        plt.title(tag)
+        # img = Image.frombytes('RGB', fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
+        # buf = io.BytesIO()
+        # plt.savefig(buf, format='png')
+        # buf.seek(0)
+
+        from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+        from matplotlib.figure import Figure
+
+        fig = Figure()
+        canvas = FigureCanvas(fig)
+        canvas.draw()  # draw the canvas, cache the renderer
+
+        image = np.fromstring(canvas.tostring_rgb(), dtype='uint8')
+        self.writer.add_image(tag, image, step)
+
 
 
     def disp_summary(self, tag, values, step):

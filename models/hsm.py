@@ -42,6 +42,12 @@ class HSMNet(nn.Module):
         '''
         diff feature volume
         '''
+        if maxdisp%1==0:
+            maxdisp = int(maxdisp)
+        else:
+            print("maxdisp should be a whole integer, not a decimal")
+            raise ValueError
+
         width = refimg_fea.shape[-1]
         cost = Variable(torch.cuda.FloatTensor(refimg_fea.size()[0], refimg_fea.size()[1], maxdisp,  refimg_fea.size()[2],  refimg_fea.size()[3]).fill_(0.))
         for i in range(min(maxdisp, width)):

@@ -157,7 +157,7 @@ def train(imgL, imgR, disp_L):
     vis['entropy'] = entropy.detach().cpu().numpy()
     lossvalue = loss.data
 
-    errors = kitti_eval.evaluate(disp_L, stacked[0])
+    errors, maps = kitti_eval.evaluate(disp_L, stacked[0])
 
     del stacked
     del loss
@@ -192,7 +192,7 @@ def validate(imgL, imgR, disp_L):
         vis['entropy'] = entropy.detach().cpu().numpy()
         lossvalue = loss.data
 
-        errors = kitti_eval.evaluate(disp_L, stacked[0])
+        errors, maps = kitti_eval.evaluate(disp_L, stacked[0])
 
         del stacked
         del loss

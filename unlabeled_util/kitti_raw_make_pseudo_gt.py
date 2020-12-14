@@ -49,12 +49,11 @@ def main():
                         help='output level of output, default is level 1 (stage 3),\
                             can also use level 2 (stage 2) or level 3 (stage 1)')
     args = parser.parse_args()
-    args.name = args.name + "_" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-
+    # args.name = args.name + "_" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 
     # construct model
     model = hsm(args.max_disp, args.clean, level=args.level)
-    model = nn.DataParallel(model, device_ids=[0])
+    model = nn.DataParallel(model)
     model.cuda()
 
     if args.loadmodel is not None:
@@ -77,30 +76,38 @@ def main():
 
     # left_img_paths, right_img_paths, out_paths = get_kitti_raw_paths(args.datapath, True, args.name)
 
-    #* path to KITTI Raw for 4th validation image
-    left_img_dir= "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_02/data/"
-    right_img_dir = "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_03/data/"
-    out_dir = "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px"
-
-    assert(len(os.listdir(left_img_dir)) == len(os.listdir(left_img_dir)))
-    left_img_paths = []
-    right_img_paths = []
-    out_paths = ["/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px"] * len(os.listdir(left_img_dir))
-    for l_dir, r_dir in zip(os.listdir(left_img_dir), os.listdir(right_img_dir)):
-        l_path = os.path.join(left_img_dir, l_dir)
-        r_path = os.path.join(right_img_dir, r_dir)
-
-        left_img_paths.append(l_path)
-        right_img_paths.append(r_path)
+    # #* path to KITTI Raw for 4th validation image
+    # left_img_dir= "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_02/data/"
+    # right_img_dir = "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_03/data/"
+    # # out_dir = "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px-maxdisp_768-testres_3.3"
+    #
+    # assert(len(os.listdir(left_img_dir)) == len(os.listdir(left_img_dir)))
+    # left_img_paths = []
+    # right_img_paths = []
+    # out_paths = [args.name] * len(os.listdir(left_img_dir))
+    # for l_dir, r_dir in zip(os.listdir(left_img_dir), os.listdir(right_img_dir)):
+    #     l_path = os.path.join(left_img_dir, l_dir)
+    #     r_path = os.path.join(right_img_dir, r_dir)
+    #
+    #     left_img_paths.append(l_path)
+    #     right_img_paths.append(r_path)
 
 
 
     processed = get_transform()
     model.eval()
 
+    with open("exp_train_set.txt") as file:
+        lines = file.readlines()
+
+    lines = lines[4500:]
+    left_img_paths = [x.strip() for x in lines]
+    right_img_paths = []
+    for p in left_img_paths:
+        right_img_paths.append(p.replace("image_02", "image_03"))
 
     
-    for (left_img_path, right_img_path, out_path) in zip(left_img_paths, right_img_paths, out_paths):
+    for (left_img_path, right_img_path) in zip(left_img_paths, right_img_paths):
 
         print(left_img_path)
         imgL_o = (skimage.io.imread(left_img_path).astype('float32'))[:, :, :3]
@@ -172,18 +179,22 @@ def main():
         invalid = np.logical_or(pred_disp == np.inf, pred_disp != pred_disp)
         pred_disp[invalid] = np.inf
 
+        out_base_path = left_img_path.split("/")[:-3]
+        out_base_path = "/" + os.path.join(*out_base_path)
+        out_base_path = os.path.join(out_base_path, args.name)
 
         img_name = left_img_path.split("/")[-1]
-        disp_path = os.path.join(out_path, "disp")
+        disp_path = os.path.join(out_base_path, "disp")
 
         os.makedirs(disp_path, exist_ok=True)
         pred_disp_png = (pred_disp * 256).astype('uint16')
         cv2.imwrite(os.path.join(disp_path, img_name), pred_disp_png)
         np.save(os.path.join(disp_path, img_name[:-len(".png")]), pred_disp)
 
-        entp_path = os.path.join(out_path, "entropy")
+        entp_path = os.path.join(out_base_path, "entropy")
         os.makedirs(entp_path, exist_ok=True)
-        entropy_png = (entropy * 256).astype('uint16')
+        # saving entropy as png
+        entropy_png = ((entropy  / entropy.max() )* 256)
         cv2.imwrite(os.path.join(entp_path, img_name), entropy_png)
         np.save(os.path.join(entp_path, img_name[:-len(".png")]), entropy)
         torch.cuda.empty_cache()

@@ -2,26 +2,109 @@ from numpy.lib.function_base import disp
 from torch.utils.data import Dataset
 import skimage.io
 import os
-from utils.preprocess import get_transform
 import cv2
 import torch
 import numpy as np
 from utils.readpfm import readPFM
 
-class RVCDataset(Dataset):
-def __init__(self, args):
+def kitti_raw_load_paths_from_file(path, pseudoGT_name):
 
-    disp_dir = "/home/isaac/high-res-stereo/unlabeled_util/pseudo_gt/disp/"
-    entropy_dir = "/home/isaac/high-res-stereo/unlabeled_util/pseudo_gt/entropy/"
+    with open(path) as file:
+        lines = file.readlines()
+
+    lines = lines[4500:]
+    left_img_paths = [x.strip() for x in lines]
+    right_img_paths = []
+    for p in left_img_paths:
+        right_img_paths.append(p.replace("image_02", "image_03"))
 
     disp_paths = []
-    entropy_paths = []
+    entp_paths = []
+    for l, r in zip(left_img_paths, right_img_paths):
+        file_name = left_img_paths.split("/")[-1]
+        file_name = file_name[:len(file_name)-3] + "npy"
+        out_base_path = l.split("/")[:-3]
+        out_base_path = "/" + os.path.join(*out_base_path)
+        disp_paths.append(os.path.join(out_base_path, pseudoGT_name, "disp", file_name))
+        entp_paths.append(os.path.join(out_base_path, pseudoGT_name, "entropy", file_name))
 
-    for img in os.listdir(disp_dir):
-        disp_paths.append(os.path.join(disp_dir, img))
-        entropy_paths.append(os.path.join(entropy_dir, img))
+    return left_img_paths, right_img_paths, disp_paths, entp_paths
 
-return disp_paths, entropy_paths
+def kitti_raw_loader(root_dir, disp_dir, entp_dir, mode="image", image_name=None):
+    all_right_img = []
+    all_left_img = []
+    all_disp = []
+    all_entp = []
+
+    left_img_dir = os.path.join(root_dir, "image_02/data")
+    right_img_dir = os.path.join(root_dir, "image_03/data")
+    disp_dir = os.path.join(root_dir, disp_dir)
+    entp_dir = os.path.join(root_dir, entp_dir)
+
+
+    if mode == "image":
+        if image_name == None:
+            print("You must pass in image_name for image mode")
+
+        if "." in image_name:
+            image_name, _ = image_name.split(".")
+        all_right_img.append(os.path.join(right_img_dir, image_name + ".png"))
+        all_left_img.append(os.path.join(left_img_dir, image_name + ".png"))
+        all_disp.append(os.path.join(disp_dir, image_name + ".npy"))
+        all_entp.append(os.path.join(entp_dir, image_name + ".npy"))
+
+    elif mode == "scene":
+        left_img_name = os.listdir(left_img_dir)
+        right_img_name = os.listdir(right_img_dir)
+        disp_name_all = os.listdir(disp_dir)
+        entp_name_all = os.listdir(entp_dir)
+
+        disp_name = []
+        entp_name = []
+        for i in range(len(disp_name_all)):
+            if disp_name_all[i].endswith(".npy"):
+                disp_name.append(disp_name_all[i])
+            if entp_name_all[i].endswith(".npy"):
+                entp_name.append(entp_name_all[i])
+
+        left_img_name.sort()
+        right_img_name.sort()
+        disp_name.sort()
+        entp_name.sort()
+
+        if not (len(left_img_name) == len(right_img_name) == len(disp_name) == len(entp_name)):
+            print("the number of left image, right image, disp, or entorpy do not match")
+            print("num left img: " + str(len(left_img_name)))
+            print("num right img: " + str(len(right_img_name)))
+            print("num disp: " + str(len(disp_name)))
+            print("num entp: " + str(len(entp_name)))
+
+        for i in range(len(left_img_name)):
+            all_left_img.append(os.path.join(left_img_dir, left_img_name[i]))
+            all_right_img.append(os.path.join(right_img_dir, right_img_name[i]))
+            all_disp.append(os.path.join(disp_dir, disp_name[i]))
+            all_entp.append(os.path.join(entp_dir, entp_name[i]))
+
+    else:
+        print("mode should be one of image, scene, or all")
+        raise ValueError
+
+    return all_left_img, all_right_img, all_disp, all_entp
+
+class RVCDataset(Dataset):
+    def __init__(self, args):
+
+        disp_dir = "/home/isaac/high-res-stereo/unlabeled_util/pseudo_gt/disp/"
+        entropy_dir = "/home/isaac/high-res-stereo/unlabeled_util/pseudo_gt/entropy/"
+
+        disp_paths = []
+        entropy_paths = []
+
+        for img in os.listdir(disp_dir):
+            disp_paths.append(os.path.join(disp_dir, img))
+            entropy_paths.append(os.path.join(entropy_dir, img))
+
+        return disp_paths, entropy_paths
 
     def __len__(self):
         return len(self.disp_paths)
