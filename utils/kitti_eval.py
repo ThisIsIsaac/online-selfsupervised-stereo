@@ -102,20 +102,20 @@ def evaluate(gt_depths, pred_disps):
 
         out = {}
         out["d_all"] = percent_outlier
-        out["abs_rel"] = abs_rel
-        out["sq_rel"] = sq_rel
+        # out["abs_rel"] = abs_rel
+        # out["sq_rel"] = sq_rel
         out["rmse"] = rmse
-        out["rmse_log"] = rmse_log
-        out["a1"] = a1
-        out["a2"] = a2
-        out["a3"] = a3
+        # out["rmse_log"] = rmse_log
+        # out["a1"] = a1
+        # out["a2"] = a2
+        # out["a3"] = a3
         errors.append(out)
 
         out_maps = {}
         out_maps["outliers_map"] = outliers_map
         out_maps["abs_rel_map"] = abs_rel_map
         out_maps["diff_map"] = diff_map
-        out_maps["thresh_map"] = thresh_map
+        # out_maps["thresh_map"] = thresh_map
 
         error_maps.append(out_maps)
 

@@ -1,4 +1,3 @@
-# from __future__ import print_function
 import os,sys,inspect
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -8,40 +7,27 @@ from rich import pretty
 pretty.install()
 from rich import traceback
 traceback.install()
-import pdb
 import argparse
 import os
-import random
-import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
-from torch.autograd import Variable
-import torch.nn.functional as F
-import numpy as np
 import time
 from models import hsm
 from utils import logger
-import plotly.express as px
-from utils import get_metrics
-from collections import Counter
-from utils import kitti_eval
-import cv2
-from dataloader import listfiles as ls
-from dataloader import listsceneflow as lt
 from dataloader import KITTIloader2015 as lk15
-from dataloader import KITTIloader2012 as lk12
 from dataloader import MiddleburyLoader as DA
-import math
 torch.backends.cudnn.benchmark = True
-import torch.nn.functional as F
-from dataloader.unlabeled_loader import kitti_raw_loader
-import matplotlib
-import matplotlib.pyplot as plt
-import seaborn as sns
+from dataloader.unlabeled_loader import kitti_raw_loader, kitti_raw_load_paths_from_file
 from trainer import *
-from trainer import _init_fn
+from dataloader import listfiles as ls
+from utils.readpfm import readPFM
+from PIL import Image
+
+def _init_fn(worker_id):
+    np.random.seed()
+    random.seed()
 
 def main():
     parser = argparse.ArgumentParser(description='HSM-Net')
@@ -74,11 +60,11 @@ def main():
     parser.add_argument("--lr_decay", default=2, type=int)
     parser.add_argument("--gpu", default=[0], nargs="+")
 
+
     args = parser.parse_args()
     torch.manual_seed(args.seed)
     torch.manual_seed(args.seed)  # set again
     torch.cuda.manual_seed(args.seed)
-    batch_size = args.batch_size
     scale_factor = args.maxdisp / 384.  # controls training resolution
     args.name = args.name + "_" + time.strftime('%l:%M%p_%Y%b%d').strip(" ")
     gpu = []
@@ -86,37 +72,42 @@ def main():
         gpu.append(int(i))
     args.gpu=gpu
 
-    all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader(
-        '%s/KITTI2015/data_scene_flow/training/' % args.database,
-        val=args.val)
-    #! properly debug me later! 30th disp is wierd. I think it's because of the resizing I did
-    left_val, right_val, disp_val_L = left_val[:16], right_val[:16], disp_val_L[:16]
+    all_left_img = ["/data/private/Middlebury/mb-ex/trainingF/Cable-perfect/im0.png"] * args.batch_size * 16
+    all_right_img = ["/data/private/Middlebury/mb-ex/trainingF/Cable-perfect/im1.png"] * args.batch_size * 16
+    all_left_disp = ["/data/private/Middlebury/kitti_testres1.15_maxdisp384/disp/Cable-perfect.npy"] * args.batch_size * 16
+    all_left_entp = ["/data/private/Middlebury/kitti_testres1.15_maxdisp384/entropy/Cable-perfect.npy"] * args.batch_size * 16
 
-    loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
-                                      order=0, use_pseudoGT=args.use_pseudoGT, entropy_threshold=args.threshold)
-    val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, is_validation=True, testres=args.testres)
-    train_data_inuse = loader_kitti15
-    val_data_inuse = val_loader_kitti15
 
-    #! For internal bug in Pytorch, if you are going to set num_workers >0 in one dataloader, it must also be set to
-    #! n >0 for the other data loader as well (ex. 1 for valLoader and 10 for trainLoader)
-    ValImgLoader = torch.utils.data.DataLoader(val_data_inuse, drop_last=False, batch_size=args.val_batch_size,
-                                               shuffle=False, worker_init_fn=_init_fn, num_workers=args.val_batch_size)
+    loader_mb = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.225,0.6*scale_factor],
+                                      order=0, use_pseudoGT=args.use_pseudoGT, entropy_threshold=args.threshold,
+                                      left_entropy=all_left_entp)
+
+    val_left_img = ["/data/private/Middlebury/mb-ex/trainingF/Cable-perfect/im0.png"]
+    val_right_img = ["/data/private/Middlebury/mb-ex/trainingF/Cable-perfect/im1.png"]
+    val_disp = ["/data/private/Middlebury/mb-ex/trainingF/Cable-perfect/disp0GT.pfm"]
+    val_loader_mb = DA.myImageFloder(val_left_img, val_right_img, val_disp, is_validation=True, testres=args.testres)
 
     TrainImgLoader = torch.utils.data.DataLoader(
-        train_data_inuse,
-        batch_size=batch_size, shuffle=True,  drop_last=True, worker_init_fn=_init_fn, num_workers=args.batch_size) #, , worker_init_fn=_init_fn
+        loader_mb,
+        batch_size=args.batch_size, shuffle=True, drop_last=True, worker_init_fn=_init_fn,
+        num_workers=args.batch_size)  # , , worker_init_fn=_init_fn
 
-    print('%d batches per epoch' % (len(train_data_inuse) // batch_size))
+    ValImgLoader = torch.utils.data.DataLoader(
+        val_loader_mb,
+        batch_size=1, shuffle=False, drop_last=False, worker_init_fn=_init_fn,
+        num_workers=1)
+
+    print('%d batches per epoch' % (len(loader_mb) // args.batch_size))
 
     model = hsm(args.maxdisp, clean=False, level=1)
 
-    if len(args.gpu) > 1:
+    gpus = [0, 1]
+    if len(gpus) > 1:
         from sync_batchnorm.sync_batchnorm import convert_model
-        model = nn.DataParallel(model, device_ids=args.gpu)
+        model = nn.DataParallel(model, device_ids=gpus)
         model = convert_model(model)
     else:
-        model = nn.DataParallel(model, device_ids=args.gpu)
+        model = nn.DataParallel(model, device_ids=gpus)
 
     model.cuda()
 
@@ -132,7 +123,6 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
 
     log = logger.Logger(args.log_dir, args.name, save_numpy=args.save_numpy)
-    # log.watch(model)
     total_iters = 0
     val_sample_count = 0
     val_batch_count = 0
@@ -163,9 +153,8 @@ def main():
         ## val ##
         if epoch % args.val_epoch == 0:
             print("validating at epoch: " + str(epoch))
-
+            val_score_accum_dict = {} # accumulates scores throughout a batch to get average score
             for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(ValImgLoader):
-                val_score_accum_dict = {}  # accumulates scores throughout a batch to get average score
 
                 vis, scores_list, err_map_list = val_step(model, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp, args.testres)
 
@@ -173,7 +162,6 @@ def main():
                     for (score_tag, score_val), (map_tag, map_val) in zip(score.items(), err_map.items()):
                         log.scalar_summary("val/" + score_tag, score_val, val_sample_count)
                         log.image_summary("val/" + map_tag, map_val, val_sample_count)
-
 
                         if score_tag not in val_score_accum_dict.keys():
                             val_score_accum_dict[score_tag] = 0
@@ -186,13 +174,14 @@ def main():
                 log.entp_summary('val/entropy', vis['entropy'], val_sample_count)
                 log.disp_summary('val/output3', vis['output3'][0], val_sample_count)
 
-            for score_tag, score_val in val_score_accum_dict.items():
-                log.scalar_summary("val/" + score_tag + "_batch_avg", score_val, val_batch_count)
-            val_batch_count+=1
+                for score_tag, score_val in val_score_accum_dict.items():
+                    log.scalar_summary("val/" + score_tag + "_batch_avg", score_val, val_batch_count)
+                val_batch_count += 1
 
         ## training ##
-        print("training at epoch: " + str(epoch))
         for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(TrainImgLoader):
+            print("training at epoch: " + str(epoch))
+
             is_scoring = total_iters%10 == 0
 
             loss, vis, scores_list, maps = train_step(model, optimizer, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp, is_scoring=is_scoring)
@@ -201,15 +190,14 @@ def main():
 
             if is_scoring:
                 log.scalar_summary('train/loss_batch', loss, total_iters)
-                # for score in scores_list:
+                for score in scores_list:
+                    for tag, val  in score.items():
+                        log.scalar_summary("train/" + tag + "_batch", val, total_iters)
 
-                for tag, val  in scores_list[0].items():
-                    log.scalar_summary("train/" + tag + "_batch", val, total_iters)
-
-                    if tag not in train_score_accum_dict.keys():
-                        train_score_accum_dict[tag] = 0
-                    train_score_accum_dict[tag] += val
-                    train_score_accum_dict["num_scored"] += imgL_crop.shape[0]
+                        if tag not in train_score_accum_dict.keys():
+                            train_score_accum_dict[tag] = 0
+                        train_score_accum_dict[tag] += val
+                        train_score_accum_dict["num_scored"] += imgL_crop.shape[0]
 
                 for tag, err_map in maps[0].items():
                     log.image_summary("train/"+tag, err_map, total_iters)

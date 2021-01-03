@@ -52,6 +52,8 @@ def cmap_map(function, cmap):
 
     return matplotlib.colors.LinearSegmentedColormap('colormap',cdict,1024)
 
+
+
 class Logger(object):
 
     def __init__(self, log_dir, name=None, save_numpy=False):
@@ -84,18 +86,6 @@ class Logger(object):
         if type(images) != np.ndarray:
             images = images.detach().cpu().numpy()
 
-        # save_as_png=True #! <--- for debugging. Remove later
-        # if save_as_png:
-        #     name = tag.replace("/", "_")
-        #     images_png = images
-        #     # images_png = (images * 256).astype("uint16")
-        #     if len(images.shape) == 4:
-        #         images_png = images_png[0]
-        #         images_png = (images_png * 256).astype("uint16")
-        #     if len(images.shape) ==3:
-        #         images_png = np.transpose(images_png, axes=[1, 2, 0])
-        #     cv2.imwrite(os.path.join(self.log_dir, name + "_" + str(step) + ".png"), images_png)
-        # images = images.astype(np.float) / 255
         if images.dtype == bool:
             images = images.astype(float)
         images = (images - images.min()) / (images.max() - images.min())
@@ -177,8 +167,10 @@ class Logger(object):
 
     def histo_summary(self, tag, values, step, bins=1000):
         """Log a histogram of the tensor of values."""
-
-        self.writer.add_histogram(tag, values, step, bins=bins)
+        if type(values) == list:
+            values = np.array(values)
+        self.writer.add_histogram(tag, values, global_step=step, bins=bins)
+        self.writer.flush()
 
 
     def to_np(self, x):

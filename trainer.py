@@ -47,6 +47,7 @@ def train_step(model, optimizer, imgL, imgR, disp_L, maxdisp, gpu=0, is_scoring=
     lossvalue = loss.data
 
     eval_score = None
+    eval_maps= None
     if is_scoring:
         eval_score, eval_maps = kitti_eval.evaluate(disp_true.detach().cpu().numpy(), vis['output3'][0])
 
@@ -56,7 +57,6 @@ def train_step(model, optimizer, imgL, imgR, disp_L, maxdisp, gpu=0, is_scoring=
 
 def val_step(model, imgL, imgR, disp_L, maxdisp, testres, gpu=0):
     model.eval()
-
     with torch.no_grad():
         imgL = torch.FloatTensor(imgL)
         imgR = torch.FloatTensor(imgR)
@@ -70,7 +70,6 @@ def val_step(model, imgL, imgR, disp_L, maxdisp, testres, gpu=0):
         # ----
 
         out, entropy = model(imgL, imgR)
-
         top_pad = out.shape[-2] - math.ceil(testres * disp_L.shape[-2])
         left_pad = out.shape[-1] - math.ceil(testres * disp_L.shape[-1])
         out = out[:, top_pad:, :out.shape[-1] - left_pad]
@@ -80,7 +79,6 @@ def val_step(model, imgL, imgR, disp_L, maxdisp, testres, gpu=0):
         vis = {}
         vis['output3'] = out.detach().cpu().numpy()
         vis['entropy'] = entropy.detach().cpu().numpy()
-
         eval_score, eval_maps = kitti_eval.evaluate(disp_true.detach().cpu().numpy(), vis['output3'][0])
 
         return vis, eval_score, eval_maps

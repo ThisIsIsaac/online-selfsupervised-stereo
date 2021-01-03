@@ -41,7 +41,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 from trainer import *
-from trainer import _init_fn
+
+def _init_fn(worker_id):
+    np.random.seed()
+    random.seed()
 
 def main():
     parser = argparse.ArgumentParser(description='HSM-Net')
@@ -52,10 +55,12 @@ def main():
                         help='data path')
     parser.add_argument('--epochs', type=int, default=10,
                         help='number of epochs to train')
-    parser.add_argument('--batch_size', type=int, default=18,
+    parser.add_argument('--batch_size', type=int, default=16,
                         # when maxdisp is 768, 18 is the most you can fit in 2 V100s (with syncBN on)
                         help='samples per batch')
-    parser.add_argument('--val_batch_size', type=int, default=2, help='validation samples per batch')
+    parser.add_argument('--val_batch_size', type=int, default=4,
+                        # when maxdisp is 768, 18 is the most you can fit in 2 V100s (with syncBN on)
+                        help='samples per batch')
     parser.add_argument('--loadmodel', default=None,
                         help='weights path')
     parser.add_argument('--log_dir', default="/data/private/logs/high-res-stereo")
@@ -63,8 +68,8 @@ def main():
     #                     help='save path')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--val_epoch', type=int, default=2)
-    parser.add_argument('--save_epoch', type=int, default=1)
+    parser.add_argument('--val_epoch', type=int, default=4)
+    parser.add_argument('--save_epoch', type=int, default=10)
     parser.add_argument("--val", action="store_true", default=False)
     parser.add_argument("--save_numpy", action="store_true", default=False)
     parser.add_argument("--testres", type=float, default=1.8)
@@ -73,6 +78,7 @@ def main():
     parser.add_argument("--lr", default=1e-3, type=float)
     parser.add_argument("--lr_decay", default=2, type=int)
     parser.add_argument("--gpu", default=[0], nargs="+")
+    parser.add_argument("--no_aug",default=False, action="store_true")
 
     args = parser.parse_args()
     torch.manual_seed(args.seed)
@@ -86,27 +92,48 @@ def main():
         gpu.append(int(i))
     args.gpu=gpu
 
-    all_left_img, all_right_img, all_left_disp, left_val, right_val, disp_val_L = lk15.dataloader(
-        '%s/KITTI2015/data_scene_flow/training/' % args.database,
-        val=args.val)
-    #! properly debug me later! 30th disp is wierd. I think it's because of the resizing I did
-    left_val, right_val, disp_val_L = left_val[:16], right_val[:16], disp_val_L[:16]
+    root_dir = "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync"
+    disp_dir = "final-768px_testres-1/disp"
+    entp_dir = "final-768px_testres-1/entropy"
+    mode = "image"
+    image_name = "0000000040.npy" #* this is the 4th image in the validation set
+    train_left, train_right, train_disp, train_entp = kitti_raw_loader(root_dir, disp_dir, entp_dir,
+                                                                       mode=mode, image_name=image_name)
 
-    loader_kitti15 = DA.myImageFloder(all_left_img, all_right_img, all_left_disp, rand_scale=[0.9, 2.4 * scale_factor],
-                                      order=0, use_pseudoGT=args.use_pseudoGT, entropy_threshold=args.threshold)
-    val_loader_kitti15 = DA.myImageFloder(left_val, right_val, disp_val_L, is_validation=True, testres=args.testres)
+    with open("unlabeled_util/KITTI2015_val.txt") as file:
+        lines = file.readlines()
+
+    train_left = [x.strip() for x in lines]
+    train_right = []
+    train_disp=[]
+    train_entp=[]
+    disp_val_L=[]
+    pseudoGT_base = "/data/private/KITTI2015/data_scene_flow/final-768px_testres-3.3/"
+    for p in train_left:
+        img_name = p[:-3] + ".npy"
+        train_right.append(p.replace("image_2", "image_3"))
+        train_disp.append(os.path.join(pseudoGT_base, "disp", img_name))
+        train_entp.append(os.path.join(pseudoGT_base, "entp", img_name))
+        disp_val_L.append(p.replace("image_2", "disp_occ_0"))
+
+
+    loader_kitti15 = DA.myImageFloder(train_left, train_right, train_disp, rand_scale=[0.9, 2.4 * scale_factor],
+                                      order=0, use_pseudoGT=args.use_pseudoGT, entropy_threshold=args.threshold,
+                                      left_entropy=train_entp, no_aug=args.no_aug)
+    val_loader_kitti15 = DA.myImageFloder(train_left, train_right, disp_val_L, is_validation=True, testres=args.testres)
+
     train_data_inuse = loader_kitti15
     val_data_inuse = val_loader_kitti15
 
-    #! For internal bug in Pytorch, if you are going to set num_workers >0 in one dataloader, it must also be set to
-    #! n >0 for the other data loader as well (ex. 1 for valLoader and 10 for trainLoader)
+    # ! For internal bug in Pytorch, if you are going to set num_workers >0 in one dataloader, it must also be set to
+    # ! n >0 for the other data loader as well (ex. 1 for valLoader and 10 for trainLoader)
     ValImgLoader = torch.utils.data.DataLoader(val_data_inuse, drop_last=False, batch_size=args.val_batch_size,
-                                               shuffle=False, worker_init_fn=_init_fn, num_workers=args.val_batch_size)
+                                               shuffle=False, worker_init_fn=_init_fn, num_workers=args.val_batch_size)  #
 
     TrainImgLoader = torch.utils.data.DataLoader(
         train_data_inuse,
-        batch_size=batch_size, shuffle=True,  drop_last=True, worker_init_fn=_init_fn, num_workers=args.batch_size) #, , worker_init_fn=_init_fn
-
+        batch_size=batch_size, shuffle=True, drop_last=True, worker_init_fn=_init_fn,
+        num_workers=args.batch_size)  # , , worker_init_fn=_init_fn
     print('%d batches per epoch' % (len(train_data_inuse) // batch_size))
 
     model = hsm(args.maxdisp, clean=False, level=1)
@@ -132,17 +159,15 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
 
     log = logger.Logger(args.log_dir, args.name, save_numpy=args.save_numpy)
-    # log.watch(model)
     total_iters = 0
     val_sample_count = 0
     val_batch_count = 0
-
     save_path = os.path.join(args.log_dir, os.path.join(args.name, "saved_model"))
     os.makedirs(save_path, exist_ok=True)
 
     for epoch in range(1, args.epochs + 1):
         total_train_loss = 0
-        train_score_accum_dict = {} # accumulates scores throughout a batch to get average score
+        train_score_accum_dict = {}  # accumulates scores throughout a batch to get average score
         train_score_accum_dict["num_scored"] = 0
         adjust_learning_rate(optimizer, args.lr, args.lr_decay, epoch, args.epochs, decay_rate=0.1)
 
@@ -161,23 +186,25 @@ def main():
             }, savefilename)
 
         ## val ##
-        if epoch % args.val_epoch == 0:
+
+        if epoch == 1 or epoch % args.val_epoch == 0:
             print("validating at epoch: " + str(epoch))
-
+            val_score_accum_dict = {}
+            val_img_idx = 0
             for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(ValImgLoader):
-                val_score_accum_dict = {}  # accumulates scores throughout a batch to get average score
 
-                vis, scores_list, err_map_list = val_step(model, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp, args.testres)
+                vis, scores_list, err_map_list = val_step(model, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp,
+                                                          args.testres)
 
                 for score, err_map in zip(scores_list, err_map_list):
                     for (score_tag, score_val), (map_tag, map_val) in zip(score.items(), err_map.items()):
-                        log.scalar_summary("val/" + score_tag, score_val, val_sample_count)
+                        log.scalar_summary("val/im_" + str(val_img_idx) + "/" + score_tag, score_val, val_sample_count)
                         log.image_summary("val/" + map_tag, map_val, val_sample_count)
-
 
                         if score_tag not in val_score_accum_dict.keys():
                             val_score_accum_dict[score_tag] = 0
-                        val_score_accum_dict[score_tag] += score_val
+                        val_score_accum_dict[score_tag]+=score_val
+                    val_img_idx+=1
                     val_sample_count += 1
 
                 log.image_summary('val/left', imgL_crop[0:1], val_sample_count)
@@ -187,43 +214,41 @@ def main():
                 log.disp_summary('val/output3', vis['output3'][0], val_sample_count)
 
             for score_tag, score_val in val_score_accum_dict.items():
-                log.scalar_summary("val/" + score_tag + "_batch_avg", score_val, val_batch_count)
-            val_batch_count+=1
+                log.scalar_summary("val/" + score_tag + "_batch_avg", score_val, epoch)
 
         ## training ##
-        print("training at epoch: " + str(epoch))
         for batch_idx, (imgL_crop, imgR_crop, disp_crop_L) in enumerate(TrainImgLoader):
-            is_scoring = total_iters%10 == 0
+            print("training at epoch: " + str(epoch))
 
-            loss, vis, scores_list, maps = train_step(model, optimizer, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp, is_scoring=is_scoring)
+            is_scoring = total_iters % 10 == 0
+
+            loss, vis, scores_list, maps = train_step(model, optimizer, imgL_crop, imgR_crop, disp_crop_L, args.maxdisp,
+                                                      is_scoring=is_scoring)
 
             total_train_loss += loss
 
             if is_scoring:
                 log.scalar_summary('train/loss_batch', loss, total_iters)
-                # for score in scores_list:
+                for score in scores_list:
+                    for tag, val in score.items():
+                        log.scalar_summary("train/" + tag + "_batch", val, total_iters)
 
-                for tag, val  in scores_list[0].items():
-                    log.scalar_summary("train/" + tag + "_batch", val, total_iters)
-
-                    if tag not in train_score_accum_dict.keys():
-                        train_score_accum_dict[tag] = 0
-                    train_score_accum_dict[tag] += val
-                    train_score_accum_dict["num_scored"] += imgL_crop.shape[0]
+                        if tag not in train_score_accum_dict.keys():
+                            train_score_accum_dict[tag] = 0
+                        train_score_accum_dict[tag] += val
+                        train_score_accum_dict["num_scored"] += imgL_crop.shape[0]
 
                 for tag, err_map in maps[0].items():
-                    log.image_summary("train/"+tag, err_map, total_iters)
+                    log.image_summary("train/" + tag, err_map, total_iters)
 
             if total_iters % 10 == 0:
                 log.image_summary('train/left', imgL_crop[0:1], total_iters)
                 log.image_summary('train/right', imgR_crop[0:1], total_iters)
-                log.disp_summary('train/gt0', disp_crop_L[0:1], total_iters) # <-- GT disp
+                log.disp_summary('train/gt0', disp_crop_L[0:1], total_iters)  # <-- GT disp
                 log.entp_summary('train/entropy', vis['entropy'][0:1], total_iters)
                 log.disp_summary('train/output3', vis['output3'][0:1], total_iters)
 
             total_iters += 1
-
-
 
         log.scalar_summary('train/loss', total_train_loss / len(TrainImgLoader), epoch)
         for tag, val in train_score_accum_dict.items():
@@ -240,6 +265,7 @@ def main():
         'train_loss': total_train_loss / len(TrainImgLoader),
         "optimizer": optimizer.state_dict()
     }, savefilename)
+
 
 if __name__ == '__main__':
     main()

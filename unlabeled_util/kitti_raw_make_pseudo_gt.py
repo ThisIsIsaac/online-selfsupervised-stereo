@@ -11,23 +11,16 @@ import numpy as np
 import os
 import pdb
 import skimage.io
-import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
-from torch.autograd import Variable
-import time
 from models.submodule import *
-from utils.eval import mkdir_p, save_pfm
 from utils.preprocess import get_transform
-from dataloader import KITTIloader2015 as lk15
-import subprocess
-from datetime import datetime
-
+from utils.disp_converter import save_disp_as_colormap
 cudnn.benchmark = False
 from dataloader.KITTIRawloader import get_kitti_raw_paths
-
-
-
+from utils.logger import Logger
+from utils.logger import Logger
+from datetime import datetime
+from PIL import Image
 def main():
     parser = argparse.ArgumentParser(description='HSM')
     parser.add_argument('--name', required=True, type=str)
@@ -48,9 +41,12 @@ def main():
     parser.add_argument('--level', type=int, default=1,
                         help='output level of output, default is level 1 (stage 3),\
                             can also use level 2 (stage 2) or level 3 (stage 1)')
+    parser.add_argument('--save_err',action="store_true")
     args = parser.parse_args()
     # args.name = args.name + "_" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-
+    name = "eval"+ "_" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    logger = Logger("/data/private/logs/high-res-stereo", name)
+    print("Saving log at: " + name)
     # construct model
     model = hsm(args.max_disp, args.clean, level=args.level)
     model = nn.DataParallel(model)
@@ -74,40 +70,19 @@ def main():
         model.eval()
         pred_disp, entropy = model(imgL, imgR)
 
-    # left_img_paths, right_img_paths, out_paths = get_kitti_raw_paths(args.datapath, True, args.name)
-
-    # #* path to KITTI Raw for 4th validation image
-    # left_img_dir= "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_02/data/"
-    # right_img_dir = "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/image_03/data/"
-    # # out_dir = "/data/private/KITTI_raw/2011_09_26/2011_09_26_drive_0013_sync/final-768px-maxdisp_768-testres_3.3"
-    #
-    # assert(len(os.listdir(left_img_dir)) == len(os.listdir(left_img_dir)))
-    # left_img_paths = []
-    # right_img_paths = []
-    # out_paths = [args.name] * len(os.listdir(left_img_dir))
-    # for l_dir, r_dir in zip(os.listdir(left_img_dir), os.listdir(right_img_dir)):
-    #     l_path = os.path.join(left_img_dir, l_dir)
-    #     r_path = os.path.join(right_img_dir, r_dir)
-    #
-    #     left_img_paths.append(l_path)
-    #     right_img_paths.append(r_path)
-
-
-
     processed = get_transform()
     model.eval()
 
-    with open("exp_train_set.txt") as file:
+    with open("KITTI2015_val.txt") as file:
         lines = file.readlines()
 
-    lines = lines[4500:]
     left_img_paths = [x.strip() for x in lines]
     right_img_paths = []
     for p in left_img_paths:
-        right_img_paths.append(p.replace("image_02", "image_03"))
-
-    
-    for (left_img_path, right_img_path) in zip(left_img_paths, right_img_paths):
+        right_img_paths.append(p.replace("image_2", "image_3"))
+    left_img_paths = [left_img_paths[3]]
+    right_img_paths = [right_img_paths[3]]
+    for i, (left_img_path, right_img_path) in enumerate(zip(left_img_paths, right_img_paths)):
 
         print(left_img_path)
         imgL_o = (skimage.io.imread(left_img_path).astype('float32'))[:, :, :3]
@@ -182,13 +157,18 @@ def main():
         out_base_path = left_img_path.split("/")[:-3]
         out_base_path = "/" + os.path.join(*out_base_path)
         out_base_path = os.path.join(out_base_path, args.name)
+        # out_base_path = "/data/private/Middlebury/kitti_testres" + str(args.testres) + "_maxdisp" + str(int(args.max_disp))
 
-        img_name = left_img_path.split("/")[-1]
+        img_name = left_img_path.split("/")[-1][:-3] + "png"
         disp_path = os.path.join(out_base_path, "disp")
 
         os.makedirs(disp_path, exist_ok=True)
-        pred_disp_png = (pred_disp * 256).astype('uint16')
+        pred_disp_png = (pred_disp * 256).astype("uint16")
         cv2.imwrite(os.path.join(disp_path, img_name), pred_disp_png)
+        logger.disp_summary( "disp" + "/" + img_name[:-4], pred_disp, i)
+        # disp_map(pred_disp, os.path.join(disp_path, img_name))
+        # logger.image_summary("poster", pred_disp, i)
+        # i+=1
         np.save(os.path.join(disp_path, img_name[:-len(".png")]), pred_disp)
 
         entp_path = os.path.join(out_base_path, "entropy")
@@ -196,8 +176,33 @@ def main():
         # saving entropy as png
         entropy_png = ((entropy  / entropy.max() )* 256)
         cv2.imwrite(os.path.join(entp_path, img_name), entropy_png)
+        logger.disp_summary("entropy" + "/" + img_name[:-4], entropy, i)
+        # save_disp_as_colormap(entropy, os.path.join(entp_path, img_name))
         np.save(os.path.join(entp_path, img_name[:-len(".png")]), entropy)
         torch.cuda.empty_cache()
+
+        # err_out_path = os.path.join(out_base_path, "err")
+        # gt_disp_path = "/data/private/Middlebury/mb-ex/trainingF/Cable-perfect/disp0GT.pfm"
+        # if args.save_err:
+        #     from utils.kitti_eval import evaluate
+        #     from utils.readpfm import readPFM
+        #     gt_disp = readPFM(gt_disp_path)
+        #     err, maps = evaluate(gt_disp[0], pred_disp)
+        #
+        #
+        #     os.makedirs(err_out_path, exist_ok=True)
+        #     file_name = os.path.join(err_out_path, img_name[:-3] + "txt")
+        #     with open(file_name, "a") as file:
+        #         for key, val in err[0].items():
+        #             line = key + ": " + str(val)
+        #             print(line)
+        #             file.write(line)
+        #
+        #     for key, val in maps[0].items():
+        #         from matplotlib import pyplot as plt
+        #         plt.imshow(val, cmap='hot', interpolation='nearest')
+        #         plt.title(key)
+        #         plt.savefig(img_name[:-3] + "_" + key + ".png")
 
 if __name__ == '__main__':
     main()

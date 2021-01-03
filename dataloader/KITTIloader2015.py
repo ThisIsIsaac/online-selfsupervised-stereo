@@ -42,9 +42,15 @@ def dataloader(filepath, val=False):
   right_train = [os.path.join(filepath, right_fold, img) for img in train]
   disp_train_L = [os.path.join(filepath, disp_L, img) for img in train]
 
-  left_val  = [os.path.join(filepath, left_fold, img) for img in val]
-  right_val = [os.path.join(filepath, right_fold, img) for img in val]
-  disp_val_L = [os.path.join(filepath, disp_L, img) for img in val]
+  left_val = []
+  right_val = []
+  disp_val_L = []
+  for img in val:
+    # if img not in  ['000158_10.png', "000159_10.png", "000171_10.png", "000165_10.png", "000174_10.png", "000179_10.png"]:
+    left_val.append(os.path.join(filepath, left_fold, img))
+    right_val.append(os.path.join(filepath, right_fold, img))
+    disp_val_L.append(os.path.join(filepath, disp_L, img))
+
 
   return left_train, right_train, disp_train_L, left_val, right_val, disp_val_L
 

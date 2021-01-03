@@ -4,7 +4,21 @@ from matplotlib import colors
 from colorspacious import cspace_converter
 import numpy as np
 import cv2
+import os
+import glob
 
+def save_disp_as_colormap(disp, path):
+    if len(disp.shape) == 3:
+        disp = disp[0]
+    values = (disp * (256)).astype("uint16")
+    values = convert_to_colormap(values)
+    # values = np.transpose(values, axes=[2, 0, 1])
+
+    # values = (values - values.min()) / (values.max() - values.min())
+    values = values / values.max()
+    values = (values *512)
+    print(cv2.imwrite(path, values))
+    cv2.imwrite(path, values)
 
 # source: https://github.com/mrharicot/monodepth/issues/118#issuecomment-369582311
 def disp_to_depth(pred_disp, img_width, dataset="kitti"):
@@ -34,9 +48,9 @@ def clean_disp(disp):
 def convert_to_colormap(x):
     x = clean_disp(x)
     rgb = cm.get_cmap("plasma")(x)[:, :, :3]
-    lab = cspace_converter("sRGB1", "CAM02-UCS")(rgb)
-
-    return lab
+    # lab = cspace_converter("sRGB1", "CAM02-UCS")(rgb)
+    # lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    return rgb
 
 def get_diffs(gt, pred):
     gt_invalid = np.logical_or(gt == np.inf, gt == 0)

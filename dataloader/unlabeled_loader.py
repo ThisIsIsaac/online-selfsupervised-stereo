@@ -12,7 +12,6 @@ def kitti_raw_load_paths_from_file(path, pseudoGT_name):
     with open(path) as file:
         lines = file.readlines()
 
-    lines = lines[4500:]
     left_img_paths = [x.strip() for x in lines]
     right_img_paths = []
     for p in left_img_paths:
@@ -21,7 +20,7 @@ def kitti_raw_load_paths_from_file(path, pseudoGT_name):
     disp_paths = []
     entp_paths = []
     for l, r in zip(left_img_paths, right_img_paths):
-        file_name = left_img_paths.split("/")[-1]
+        file_name = l.split("/")[-1]
         file_name = file_name[:len(file_name)-3] + "npy"
         out_base_path = l.split("/")[:-3]
         out_base_path = "/" + os.path.join(*out_base_path)
