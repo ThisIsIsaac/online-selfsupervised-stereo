@@ -1,4 +1,5 @@
 # Robust Online Self-supervised Learning via Confidence Masking
+by Isaac Lee and Gengshan Yang
 
 <img width="1034" alt="Screenshot 2023-10-18 at 9 06 19 PM" src="https://github.com/ThisIsIsaac/high-res-stereo/assets/49523965/309e7ef2-f6ef-4750-a28e-f157b35adad8">
 
